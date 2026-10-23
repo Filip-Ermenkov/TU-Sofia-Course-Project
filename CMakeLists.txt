@@ -16,6 +16,12 @@ else()
     target_compile_options(project_warnings INTERFACE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+add_library(courier_core STATIC
+    src/LogisticsException.cpp)
+
+target_include_directories(courier_core PUBLIC include)
+target_link_libraries(courier_core PRIVATE project_warnings)
+
 add_executable(courier src/main.cpp)
 
-target_link_libraries(courier PRIVATE project_warnings)
+target_link_libraries(courier PRIVATE courier_core project_warnings)
