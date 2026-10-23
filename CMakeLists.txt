@@ -25,3 +25,6 @@ target_link_libraries(courier_core PRIVATE project_warnings)
 add_executable(courier src/main.cpp)
 
 target_link_libraries(courier PRIVATE courier_core project_warnings)
+
+enable_testing()
+add_subdirectory(tests)
