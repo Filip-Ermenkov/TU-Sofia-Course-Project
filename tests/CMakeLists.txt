@@ -10,7 +10,8 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(courier_tests
     LogisticsExceptionTests.cpp
-    ValidationExceptionTests.cpp)
+    ValidationExceptionTests.cpp
+    DimensionsTests.cpp)
 
 target_link_libraries(courier_tests PRIVATE courier_core Catch2::Catch2WithMain project_warnings)
 

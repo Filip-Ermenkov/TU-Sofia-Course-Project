@@ -18,7 +18,8 @@ endif()
 
 add_library(courier_core STATIC
     src/LogisticsException.cpp
-    src/ValidationException.cpp)
+    src/ValidationException.cpp
+    src/Dimensions.cpp)
 
 target_include_directories(courier_core PUBLIC include)
 target_link_libraries(courier_core PRIVATE project_warnings)
