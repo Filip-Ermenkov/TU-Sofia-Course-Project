@@ -21,7 +21,8 @@ add_library(courier_core STATIC
     src/ValidationException.cpp
     src/Dimensions.cpp
     src/ServiceType.cpp
-    src/PackageStatus.cpp)
+    src/PackageStatus.cpp
+    src/TrackingId.cpp)
 
 target_include_directories(courier_core PUBLIC include)
 target_link_libraries(courier_core PRIVATE project_warnings)
