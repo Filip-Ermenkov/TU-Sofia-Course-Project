@@ -11,7 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_library(project_warnings INTERFACE)
 if(MSVC)
-    target_compile_options(project_warnings INTERFACE /W4 /permissive- /WX)
+    target_compile_options(project_warnings INTERFACE /W4 /w44062 /permissive- /WX)
 else()
     target_compile_options(project_warnings INTERFACE -Wall -Wextra -Wpedantic -Werror)
 endif()
