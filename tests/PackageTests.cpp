@@ -2,6 +2,7 @@
 #include <catch2/matchers/catch_matchers.hpp>
 #include <limits>
 #include <memory>
+#include <sstream>
 #include <type_traits>
 
 #include "courier/LogisticsException.hpp"
@@ -114,4 +115,21 @@ TEST_CASE("Package works through a smart pointer to the base class") {
     const std::unique_ptr<Package> package = std::make_unique<StandardPackage>(makePackage());
     REQUIRE(package->serviceType() == courier::ServiceType::Standard);
     REQUIRE(package->totalCost() == Money(900));
+}
+
+TEST_CASE("Package prints a waybill with the price breakdown") {
+    std::ostringstream out;
+    out << makePackage();
+    REQUIRE(out.str() ==
+            "===== WAYBILL CR00000042 =====\n"
+            "Service:        Standard\n"
+            "Status:         Accepted\n"
+            "Recipient:      Ivan Petrov\n"
+            "Destination:    Sofia, 1 Vitosha Blvd\n"
+            "Weight:         2 kg (chargeable 2 kg)\n"
+            "Size:           30 x 20 x 10 cm\n"
+            "Declared value: 100.00\n"
+            "Delivery fee:   8.00\n"
+            "Insurance:      1.00\n"
+            "Total:          9.00\n");
 }

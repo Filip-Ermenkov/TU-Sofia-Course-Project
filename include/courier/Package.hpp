@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ostream>
 #include <string>
 
 #include "courier/Dimensions.hpp"
@@ -67,5 +68,8 @@ private:
     Money declaredValue_;
     PackageStatus status_ = PackageStatus::Accepted;
 };
+
+// Prints the waybill (shipping label) with the price breakdown.
+std::ostream& operator<<(std::ostream& out, const Package& package);
 
 }  // namespace courier

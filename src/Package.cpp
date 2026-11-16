@@ -84,4 +84,22 @@ Money Package::weightBasedFee(Money baseFee, Money perKg) const {
     return baseFee + perKg.multipliedBy(chargeableWeightKg());
 }
 
+std::ostream& operator<<(std::ostream& out, const Package& package) {
+    const Dimensions& size = package.getDimensions();
+    out << std::format("===== WAYBILL {} =====\n", package.getId().getValue())
+        << std::format("{:<16}{}\n", "Service:", toString(package.serviceType()))
+        << std::format("{:<16}{}\n", "Status:", toString(package.getStatus()))
+        << std::format("{:<16}{}\n", "Recipient:", package.getRecipient())
+        << std::format("{:<16}{}\n", "Destination:", package.getDestination())
+        << std::format("{:<16}{} kg (chargeable {} kg)\n", "Weight:", package.getWeightKg(),
+                       package.chargeableWeightKg())
+        << std::format("{:<16}{} x {} x {} cm\n", "Size:", size.getLength(), size.getWidth(),
+                       size.getHeight())
+        << std::format("{:<16}{}\n", "Declared value:", package.getDeclaredValue().toString())
+        << std::format("{:<16}{}\n", "Delivery fee:", package.deliveryFee().toString())
+        << std::format("{:<16}{}\n", "Insurance:", package.insuranceFee().toString())
+        << std::format("{:<16}{}\n", "Total:", package.totalCost().toString());
+    return out;
+}
+
 }  // namespace courier
