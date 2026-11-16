@@ -9,4 +9,7 @@ namespace courier {
 // Returns value if it is finite and greater than zero, otherwise throws ValidationException.
 double requirePositive(const std::string& field, double value);
 
+// Returns text if it contains anything besides whitespace, otherwise throws ValidationException.
+std::string requireNotBlank(const std::string& field, std::string text);
+
 }  // namespace courier

@@ -24,7 +24,9 @@ add_library(courier_core STATIC
     src/PackageStatus.cpp
     src/TrackingId.cpp
     src/Validation.cpp
-    src/Money.cpp)
+    src/Money.cpp
+    src/Package.cpp
+    src/StandardPackage.cpp)
 
 target_include_directories(courier_core PUBLIC include)
 target_link_libraries(courier_core PRIVATE project_warnings)

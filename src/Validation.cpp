@@ -1,6 +1,7 @@
 #include "Validation.hpp"
 
 #include <cmath>
+#include <format>
 
 #include "courier/ValidationException.hpp"
 
@@ -12,6 +13,13 @@ double requirePositive(const std::string& field, double value) {
         throw ValidationException(field, value);
     }
     return value;
+}
+
+std::string requireNotBlank(const std::string& field, std::string text) {
+    if (text.find_first_not_of(" \t\r\n") == std::string::npos) {
+        throw ValidationException(std::format("Invalid {}: must not be empty", field));
+    }
+    return text;
 }
 
 }  // namespace courier
