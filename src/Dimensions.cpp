@@ -1,23 +1,8 @@
 #include "courier/Dimensions.hpp"
 
-#include <cmath>
-#include <string>
-
-#include "courier/ValidationException.hpp"
+#include "Validation.hpp"
 
 namespace courier {
-
-namespace {
-
-// NaN fails every comparison, so "value <= 0" alone would let it through.
-double requirePositive(const std::string& field, double value) {
-    if (!std::isfinite(value) || value <= 0.0) {
-        throw ValidationException(field, value);
-    }
-    return value;
-}
-
-}  // namespace
 
 Dimensions::Dimensions(double length, double width, double height)
     : length_(requirePositive("length", length)),
