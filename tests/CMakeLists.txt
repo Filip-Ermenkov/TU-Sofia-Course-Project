@@ -14,7 +14,8 @@ add_executable(courier_tests
     DimensionsTests.cpp
     ServiceTypeTests.cpp
     PackageStatusTests.cpp
-    TrackingIdTests.cpp)
+    TrackingIdTests.cpp
+    MoneyTests.cpp)
 
 target_link_libraries(courier_tests PRIVATE courier_core Catch2::Catch2WithMain project_warnings)
 
