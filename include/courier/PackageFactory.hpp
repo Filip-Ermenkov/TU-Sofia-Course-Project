@@ -21,9 +21,14 @@ public:
     // Continues after an ID that was already handed out, e.g. the highest one loaded from a file.
     explicit PackageFactory(TrackingId lastIssued);
 
-    // A copy would hand out the same IDs a second time.
+    // A copy would hand out the same IDs a second time, and a moved-from factory would still hold
+    // its counter, so neither is allowed. Written out in full so the intent is visible (rule of
+    // five).
     PackageFactory(const PackageFactory&) = delete;
     PackageFactory& operator=(const PackageFactory&) = delete;
+    PackageFactory(PackageFactory&&) = delete;
+    PackageFactory& operator=(PackageFactory&&) = delete;
+    ~PackageFactory() = default;
 
     // An ID is used up only if the package was created; invalid input throws ValidationException.
     [[nodiscard]] std::unique_ptr<Package> create(ServiceType type, double weightKg,

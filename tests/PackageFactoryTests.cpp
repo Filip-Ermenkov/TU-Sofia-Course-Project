@@ -83,7 +83,9 @@ TEST_CASE("PackageFactory reports when no tracking IDs are left") {
     REQUIRE(factory.getLastIssued() == last);
 }
 
-TEST_CASE("PackageFactory cannot be copied, so no ID is handed out twice") {
+TEST_CASE("PackageFactory cannot be copied or moved, so no ID is handed out twice") {
     STATIC_REQUIRE_FALSE(std::is_copy_constructible_v<PackageFactory>);
     STATIC_REQUIRE_FALSE(std::is_copy_assignable_v<PackageFactory>);
+    STATIC_REQUIRE_FALSE(std::is_move_constructible_v<PackageFactory>);
+    STATIC_REQUIRE_FALSE(std::is_move_assignable_v<PackageFactory>);
 }
