@@ -6,13 +6,13 @@
 #include <type_traits>
 
 #include "courier/FragilePackage.hpp"
-#include "courier/LogisticsException.hpp"
+#include "courier/InvalidStatusChangeException.hpp"
 #include "courier/Package.hpp"
 #include "courier/StandardPackage.hpp"
 #include "courier/ValidationException.hpp"
 
 using courier::Dimensions;
-using courier::LogisticsException;
+using courier::InvalidStatusChangeException;
 using courier::Money;
 using courier::Package;
 using courier::PackageStatus;
@@ -122,7 +122,7 @@ TEST_CASE("Package status moves forward one step at a time") {
 
 TEST_CASE("Package rejects an invalid status change with a clear message") {
     StandardPackage package = makePackage();
-    REQUIRE_THROWS_AS(package.setStatus(PackageStatus::Delivered), LogisticsException);
+    REQUIRE_THROWS_AS(package.setStatus(PackageStatus::Delivered), InvalidStatusChangeException);
     REQUIRE(package.getStatus() == PackageStatus::Accepted);
     REQUIRE_THROWS_WITH(package.setStatus(PackageStatus::Accepted),
                         "Cannot change CR00000042 from Accepted to Accepted");

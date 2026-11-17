@@ -5,7 +5,7 @@
 #include <utility>
 
 #include "Validation.hpp"
-#include "courier/LogisticsException.hpp"
+#include "courier/InvalidStatusChangeException.hpp"
 #include "courier/ValidationException.hpp"
 
 namespace courier {
@@ -70,8 +70,7 @@ void Package::setDestination(std::string destination) {
 
 void Package::setStatus(PackageStatus status) {
     if (!canTransition(status_, status)) {
-        throw LogisticsException(std::format("Cannot change {} from {} to {}", id_.getValue(),
-                                             toString(status_), toString(status)));
+        throw InvalidStatusChangeException(id_, status_, status);
     }
     status_ = status;
 }

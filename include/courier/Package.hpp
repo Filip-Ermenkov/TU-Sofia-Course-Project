@@ -37,7 +37,7 @@ public:
     void setDeclaredValue(Money declaredValue);
     void setRecipient(std::string recipient);
     void setDestination(std::string destination);
-    // Only forward, one step at a time; anything else throws LogisticsException.
+    // Only forward, one step at a time; anything else throws InvalidStatusChangeException.
     void setStatus(PackageStatus status);
 
     [[nodiscard]] double chargeableWeightKg() const;

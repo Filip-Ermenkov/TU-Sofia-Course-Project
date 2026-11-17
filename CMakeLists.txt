@@ -19,6 +19,7 @@ endif()
 add_library(courier_core STATIC
     src/LogisticsException.cpp
     src/ValidationException.cpp
+    src/InvalidStatusChangeException.cpp
     src/Dimensions.cpp
     src/ServiceType.cpp
     src/PackageStatus.cpp
