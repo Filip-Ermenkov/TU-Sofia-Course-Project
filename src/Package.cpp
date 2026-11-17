@@ -12,8 +12,12 @@ namespace courier {
 
 namespace {
 
-Money requireNotNegative(Money value) {
-    if (value < Money()) {
+double requireWeight(double weightKg) {
+    return requireInRange("weight", weightKg, Package::kMaxWeightKg);
+}
+
+Money requireDeclaredValue(Money value) {
+    if (value < Money() || value > Package::kMaxDeclaredValue) {
         throw ValidationException(std::format("Invalid declared value: {}", value.toString()));
     }
     return value;
@@ -24,11 +28,11 @@ Money requireNotNegative(Money value) {
 Package::Package(TrackingId id, double weightKg, Dimensions dimensions, std::string recipient,
                  std::string destination, Money declaredValue)
     : id_(id),
-      weightKg_(requirePositive("weight", weightKg)),
+      weightKg_(requireWeight(weightKg)),
       dimensions_(dimensions),
       recipient_(requireNotBlank("recipient", std::move(recipient))),
       destination_(requireNotBlank("destination", std::move(destination))),
-      declaredValue_(requireNotNegative(declaredValue)) {}
+      declaredValue_(requireDeclaredValue(declaredValue)) {}
 
 Package::Package(TrackingId id, double weightKg, Dimensions dimensions, std::string recipient,
                  std::string destination)
@@ -48,12 +52,12 @@ const std::string& Package::getDestination() const { return destination_; }
 
 PackageStatus Package::getStatus() const { return status_; }
 
-void Package::setWeightKg(double weightKg) { weightKg_ = requirePositive("weight", weightKg); }
+void Package::setWeightKg(double weightKg) { weightKg_ = requireWeight(weightKg); }
 
 void Package::setDimensions(const Dimensions& dimensions) { dimensions_ = dimensions; }
 
 void Package::setDeclaredValue(Money declaredValue) {
-    declaredValue_ = requireNotNegative(declaredValue);
+    declaredValue_ = requireDeclaredValue(declaredValue);
 }
 
 void Package::setRecipient(std::string recipient) {

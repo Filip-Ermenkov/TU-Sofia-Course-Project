@@ -7,9 +7,9 @@
 
 namespace courier {
 
-// NaN fails every comparison, so "value <= 0" alone would let it through.
-double requirePositive(const std::string& field, double value) {
-    if (!std::isfinite(value) || value <= 0.0) {
+// NaN fails every comparison, so the range check alone would let it through.
+double requireInRange(const std::string& field, double value, double max) {
+    if (!std::isfinite(value) || value <= 0.0 || value > max) {
         throw ValidationException(field, value);
     }
     return value;

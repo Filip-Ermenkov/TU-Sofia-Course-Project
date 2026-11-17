@@ -2,9 +2,12 @@
 
 namespace courier {
 
-// Outer size of a parcel in centimetres. All sides are always positive and finite.
+// Outer size of a parcel in centimetres. Every side is always greater than 0 and at most
+// kMaxSideCm.
 class Dimensions {
 public:
+    static constexpr double kMaxSideCm = 500.0;
+
     Dimensions(double length, double width, double height);
     explicit Dimensions(double side);
 

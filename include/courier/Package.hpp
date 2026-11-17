@@ -18,6 +18,9 @@ public:
     // Real weight is charged, unless the parcel is so bulky that its volume weighs more.
     static constexpr double kVolumetricDivisor = 5000.0;  // cm^3 per chargeable kg
     static constexpr double kInsuranceRate = 0.01;        // share of the declared value
+    // Upper limits, so no input can push a price past what Money can hold.
+    static constexpr double kMaxWeightKg = 1000.0;
+    static constexpr Money kMaxDeclaredValue{100'000'000};  // 1,000,000.00
 
     virtual ~Package() = default;
 

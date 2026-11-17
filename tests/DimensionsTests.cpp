@@ -41,6 +41,12 @@ TEST_CASE("Dimensions rejects invalid sides") {
     REQUIRE_THROWS_AS(Dimensions(kInfinity), ValidationException);
 }
 
+TEST_CASE("Dimensions accepts sides up to the maximum and rejects longer ones") {
+    REQUIRE(Dimensions(Dimensions::kMaxSideCm).volume() == 500.0 * 500.0 * 500.0);
+    REQUIRE_THROWS_AS(Dimensions(30.0, 20.0, Dimensions::kMaxSideCm + 0.1), ValidationException);
+    REQUIRE_THROWS_AS(Dimensions(1e300), ValidationException);
+}
+
 TEST_CASE("Dimensions error message names the invalid side") {
     REQUIRE_THROWS_WITH(Dimensions(30.0, -2.0, 10.0), "Invalid width: -2");
 }
@@ -48,7 +54,9 @@ TEST_CASE("Dimensions error message names the invalid side") {
 TEST_CASE("Dimensions setter rejects an invalid value and keeps the old one") {
     Dimensions box(30.0, 20.0, 10.0);
     REQUIRE_THROWS_AS(box.setHeight(-5.0), ValidationException);
+    REQUIRE_THROWS_AS(box.setLength(600.0), ValidationException);
     REQUIRE(box.getHeight() == 10.0);
+    REQUIRE(box.getLength() == 30.0);
 
     box.setHeight(12.5);
     REQUIRE(box.getHeight() == 12.5);

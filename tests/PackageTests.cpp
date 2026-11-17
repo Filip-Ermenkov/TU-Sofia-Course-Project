@@ -5,6 +5,7 @@
 #include <sstream>
 #include <type_traits>
 
+#include "courier/FragilePackage.hpp"
 #include "courier/LogisticsException.hpp"
 #include "courier/Package.hpp"
 #include "courier/StandardPackage.hpp"
@@ -63,6 +64,30 @@ TEST_CASE("Package rejects invalid input on construction") {
     REQUIRE_THROWS_AS(StandardPackage(id, 1.0, box, "Ivan", "   "), ValidationException);
     REQUIRE_THROWS_AS(StandardPackage(id, 1.0, box, "Ivan", "Sofia", Money(-1)),
                       ValidationException);
+}
+
+TEST_CASE("Package accepts values up to the limits and rejects larger ones") {
+    const Dimensions box(10.0);
+    const TrackingId id(1);
+    const StandardPackage heaviest(id, Package::kMaxWeightKg, box, "Ivan", "Sofia",
+                                   Package::kMaxDeclaredValue);
+    REQUIRE(heaviest.getWeightKg() == Package::kMaxWeightKg);
+
+    REQUIRE_THROWS_AS(StandardPackage(id, Package::kMaxWeightKg + 0.5, box, "Ivan", "Sofia"),
+                      ValidationException);
+    REQUIRE_THROWS_AS(StandardPackage(id, 1e300, box, "Ivan", "Sofia"), ValidationException);
+    REQUIRE_THROWS_AS(
+        StandardPackage(id, 1.0, box, "Ivan", "Sofia", Package::kMaxDeclaredValue + Money(1)),
+        ValidationException);
+}
+
+TEST_CASE("The most expensive possible package still has an exact price") {
+    // Biggest box and highest value at the most expensive rates: far below the int64 cent range.
+    const courier::FragilePackage package(TrackingId(1), Package::kMaxWeightKg,
+                                          Dimensions(Dimensions::kMaxSideCm), "Ivan", "Sofia",
+                                          Package::kMaxDeclaredValue);
+    REQUIRE(package.chargeableWeightKg() == 25000.0);
+    REQUIRE(package.totalCost() == Money(500 + 150 * 25000 + 400 + 2'000'000));
 }
 
 TEST_CASE("Package setters validate and keep the old value on failure") {
