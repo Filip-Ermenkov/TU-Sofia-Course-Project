@@ -28,7 +28,8 @@ add_library(courier_core STATIC
     src/Package.cpp
     src/StandardPackage.cpp
     src/ExpressPackage.cpp
-    src/FragilePackage.cpp)
+    src/FragilePackage.cpp
+    src/PackageFactory.cpp)
 
 target_include_directories(courier_core PUBLIC include)
 target_link_libraries(courier_core PRIVATE project_warnings)
