@@ -1,0 +1,102 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 25,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "binaryDir": "${sourceDir}/build/${presetName}"
+        },
+        {
+            "name": "msvc",
+            "displayName": "MSVC (Visual Studio 2022)",
+            "inherits": "base",
+            "generator": "Visual Studio 17 2022",
+            "architecture": "x64",
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "gcc",
+            "displayName": "GCC, Debug",
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "g++",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "clang",
+            "displayName": "Clang, Debug",
+            "inherits": "base",
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "clang++",
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "gcc-asan",
+            "displayName": "GCC, Debug, AddressSanitizer + UndefinedBehaviorSanitizer",
+            "inherits": "gcc",
+            "cacheVariables": {
+                "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "msvc",
+            "configurePreset": "msvc",
+            "configuration": "Debug"
+        },
+        {
+            "name": "gcc",
+            "configurePreset": "gcc"
+        },
+        {
+            "name": "clang",
+            "configurePreset": "clang"
+        },
+        {
+            "name": "gcc-asan",
+            "configurePreset": "gcc-asan"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "output": {
+                "outputOnFailure": true
+            }
+        },
+        {
+            "name": "msvc",
+            "inherits": "base",
+            "configurePreset": "msvc",
+            "configuration": "Debug"
+        },
+        {
+            "name": "gcc",
+            "inherits": "base",
+            "configurePreset": "gcc"
+        },
+        {
+            "name": "clang",
+            "inherits": "base",
+            "configurePreset": "clang"
+        },
+        {
+            "name": "gcc-asan",
+            "inherits": "base",
+            "configurePreset": "gcc-asan"
+        }
+    ]
+}
