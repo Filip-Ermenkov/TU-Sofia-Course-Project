@@ -3,6 +3,7 @@
 #include <limits>
 #include <memory>
 #include <sstream>
+#include <string>
 #include <type_traits>
 
 #include "courier/FragilePackage.hpp"
@@ -151,10 +152,20 @@ TEST_CASE("Package prints a waybill with the price breakdown") {
             "Status:         Accepted\n"
             "Recipient:      Ivan Petrov\n"
             "Destination:    Sofia, 1 Vitosha Blvd\n"
-            "Weight:         2 kg (chargeable 2 kg)\n"
-            "Size:           30 x 20 x 10 cm\n"
+            "Weight:         2.00 kg (chargeable 2.00 kg)\n"
+            "Size:           30.0 x 20.0 x 10.0 cm\n"
             "Declared value: 100.00\n"
             "Delivery fee:   8.00\n"
             "Insurance:      1.00\n"
             "Total:          9.00\n");
+}
+
+TEST_CASE("Package waybill rounds weights and sizes for display") {
+    const StandardPackage package(TrackingId(1), 1.2345, Dimensions(33.33, 21.7, 11.1), "Ivan",
+                                  "Sofia");
+    std::ostringstream out;
+    out << package;
+    const std::string waybill = out.str();
+    REQUIRE(waybill.find("Weight:         1.23 kg (chargeable 1.61 kg)\n") != std::string::npos);
+    REQUIRE(waybill.find("Size:           33.3 x 21.7 x 11.1 cm\n") != std::string::npos);
 }

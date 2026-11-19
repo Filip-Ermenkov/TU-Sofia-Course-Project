@@ -94,10 +94,11 @@ std::ostream& operator<<(std::ostream& out, const Package& package) {
         << std::format("{:<16}{}\n", "Status:", toString(package.getStatus()))
         << std::format("{:<16}{}\n", "Recipient:", package.getRecipient())
         << std::format("{:<16}{}\n", "Destination:", package.getDestination())
-        << std::format("{:<16}{} kg (chargeable {} kg)\n", "Weight:", package.getWeightKg(),
+        // Rounded for display only; prices are computed from the exact values.
+        << std::format("{:<16}{:.2f} kg (chargeable {:.2f} kg)\n", "Weight:", package.getWeightKg(),
                        package.chargeableWeightKg())
-        << std::format("{:<16}{} x {} x {} cm\n", "Size:", size.getLength(), size.getWidth(),
-                       size.getHeight())
+        << std::format("{:<16}{:.1f} x {:.1f} x {:.1f} cm\n", "Size:", size.getLength(),
+                       size.getWidth(), size.getHeight())
         << std::format("{:<16}{}\n", "Declared value:", package.getDeclaredValue().toString())
         << std::format("{:<16}{}\n", "Delivery fee:", package.deliveryFee().toString())
         << std::format("{:<16}{}\n", "Insurance:", package.insuranceFee().toString())
