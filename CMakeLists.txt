@@ -45,6 +45,7 @@ add_library(courier_core STATIC
     src/PackageFactory.cpp
     src/ShipmentCommand.cpp
     src/RerouteCommand.cpp
+    src/ModifyCommand.cpp
     src/StatusObserver.cpp
     src/LogisticsManager.cpp
     src/DispatchModule.cpp)
