@@ -16,6 +16,7 @@ TEST_CASE("OperationType converts to its name") {
     REQUIRE(toString(OperationType::StatusChange) == "Status change");
     REQUIRE(toString(OperationType::Reroute) == "Reroute");
     REQUIRE(toString(OperationType::Modify) == "Modify");
+    REQUIRE(toString(OperationType::Assign) == "Assign");
     REQUIRE(toString(OperationType::Undo) == "Undo");
     REQUIRE(toString(OperationType::Redo) == "Redo");
     REQUIRE_THROWS_AS(toString(static_cast<OperationType>(99)), std::logic_error);

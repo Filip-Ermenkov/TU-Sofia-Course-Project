@@ -14,6 +14,8 @@ std::string_view toString(OperationType type) {
             return "Reroute";
         case OperationType::Modify:
             return "Modify";
+        case OperationType::Assign:
+            return "Assign";
         case OperationType::Undo:
             return "Undo";
         case OperationType::Redo:

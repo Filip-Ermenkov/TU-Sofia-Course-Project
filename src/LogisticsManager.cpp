@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "courier/AssignCommand.hpp"
 #include "courier/AssigneeNotFoundException.hpp"
 #include "courier/ModifyCommand.hpp"
 #include "courier/OperationType.hpp"
@@ -205,6 +206,22 @@ std::vector<const Assignee*> LogisticsManager::assignees() const {
         return assignee->getCode();
     });
     return result;
+}
+
+// Both lookups first, in a fixed order, so the exception for a bad input is always the same one.
+void LogisticsManager::assign(const TrackingId& id, const std::string& code) {
+    Package& package = findPackage(id);
+    const Assignee& assignee = getAssignee(code);
+    run(OperationType::Assign, std::make_unique<AssignCommand>(package, assignee));
+}
+
+void LogisticsManager::unassign(const TrackingId& id) {
+    run(OperationType::Assign, std::make_unique<AssignCommand>(findPackage(id)));
+}
+
+std::vector<const Package*> LogisticsManager::assignedTo(const std::string& code) const {
+    const std::string& known = getAssignee(code).getCode();  // throws for an unknown code
+    return filter([&known](const Package& package) { return package.getAssigneeCode() == known; });
 }
 
 const std::vector<OperationRecord>& LogisticsManager::history() const { return history_; }

@@ -108,6 +108,15 @@ public:
     // All couriers and offices, ordered by code. Non-owning, never null.
     [[nodiscard]] std::vector<const Assignee*> assignees() const;
 
+    // Assigns the shipment to a registered courier or office, replacing any earlier assignment, or
+    // removes its assignment. Undoable like reroute and modify. Throw PackageNotFoundException,
+    // AssigneeNotFoundException or OperationNotAllowedException (delivered) and change nothing.
+    void assign(const TrackingId& id, const std::string& code);
+    void unassign(const TrackingId& id);
+    // Shipments assigned to the courier or office, ordered by tracking ID. Throws
+    // AssigneeNotFoundException for an unknown code.
+    [[nodiscard]] std::vector<const Package*> assignedTo(const std::string& code) const;
+
     // Every successful operation, oldest first. A failed operation leaves no entry.
     [[nodiscard]] const std::vector<OperationRecord>& history() const;
     // The cancelled operations: every undo ever made, oldest first. A redo or a new change does

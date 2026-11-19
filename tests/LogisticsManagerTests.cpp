@@ -538,3 +538,109 @@ TEST_CASE("LogisticsManager reports an unknown courier or office code") {
     REQUIRE_THROWS_AS(manager.getAssignee("C-99"), AssigneeNotFoundException);
     REQUIRE_THROWS_WITH(manager.getAssignee("C-99"), "No courier or office with code C-99");
 }
+
+namespace {
+
+void addCourierAndOffice(LogisticsManager& manager) {
+    manager.addAssignee(std::make_unique<Courier>("C-01", "Ivan Petrov"));
+    manager.addAssignee(std::make_unique<Office>("VAR-1", "Varna Center"));
+}
+
+}  // namespace
+
+TEST_CASE("LogisticsManager assigns a shipment with undo and redo") {
+    LogisticsManager manager;
+    addCourierAndOffice(manager);
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+    const TrackingId id = package.getId();
+
+    manager.assign(id, "C-01");
+    REQUIRE(package.getAssigneeCode() == "C-01");
+    manager.assign(id, "VAR-1");
+    REQUIRE(package.getAssigneeCode() == "VAR-1");
+
+    REQUIRE(manager.undo());
+    REQUIRE(package.getAssigneeCode() == "C-01");
+    REQUIRE(manager.redo());
+    REQUIRE(package.getAssigneeCode() == "VAR-1");
+
+    const auto& history = manager.history();
+    REQUIRE(history.size() == 5);
+    REQUIRE(history[1].getType() == OperationType::Assign);
+    REQUIRE(history[1].getDetails() == "Assign CR00000001: none -> C-01");
+    REQUIRE(history[2].getDetails() == "Assign CR00000001: C-01 -> VAR-1");
+    REQUIRE(history[3].getType() == OperationType::Undo);
+    REQUIRE(history[4].getType() == OperationType::Redo);
+    REQUIRE(manager.cancelledOperations().size() == 1);
+}
+
+TEST_CASE("LogisticsManager removes an assignment with undo") {
+    LogisticsManager manager;
+    addCourierAndOffice(manager);
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+    manager.assign(package.getId(), "C-01");
+
+    manager.unassign(package.getId());
+    REQUIRE_FALSE(package.getAssigneeCode().has_value());
+    REQUIRE(manager.history().back().getDetails() == "Assign CR00000001: C-01 -> none");
+    REQUIRE(manager.undo());
+    REQUIRE(package.getAssigneeCode() == "C-01");
+}
+
+TEST_CASE("LogisticsManager lists the shipments of a courier or office") {
+    LogisticsManager manager;
+    addCourierAndOffice(manager);
+    const auto& first = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+    const auto& second = manager.accept(ServiceType::Express, 1.0, kBox, "Anna", "Varna");
+    const auto& third = manager.accept(ServiceType::Fragile, 1.0, kBox, "Elena", "Ruse");
+    manager.assign(third.getId(), "C-01");
+    manager.assign(first.getId(), "C-01");
+    manager.assign(second.getId(), "VAR-1");
+
+    REQUIRE(manager.assignedTo("C-01") == std::vector<const Package*>{&first, &third});
+    REQUIRE(manager.assignedTo("VAR-1") == std::vector<const Package*>{&second});
+    manager.unassign(second.getId());
+    REQUIRE(manager.assignedTo("VAR-1").empty());
+    REQUIRE_THROWS_AS(manager.assignedTo("C-99"), AssigneeNotFoundException);
+}
+
+TEST_CASE("LogisticsManager rejects a bad assignment without recording it") {
+    LogisticsManager manager;
+    addCourierAndOffice(manager);
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+
+    REQUIRE_THROWS_AS(manager.assign(package.getId(), "C-99"), AssigneeNotFoundException);
+    REQUIRE_THROWS_AS(manager.assign(TrackingId(99), "C-01"), PackageNotFoundException);
+    REQUIRE_THROWS_AS(manager.assign(TrackingId(99), "C-99"), PackageNotFoundException);
+    REQUIRE_THROWS_AS(manager.unassign(TrackingId(99)), PackageNotFoundException);
+    REQUIRE_FALSE(package.getAssigneeCode().has_value());
+    REQUIRE(manager.history().size() == 1);
+    REQUIRE_FALSE(manager.canUndo());
+}
+
+TEST_CASE("LogisticsManager cannot assign a delivered shipment or undo its assignment") {
+    LogisticsManager manager;
+    addCourierAndOffice(manager);
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+    manager.assign(package.getId(), "C-01");
+    manager.changeStatus(package.getId(), PackageStatus::InTransit);
+    manager.changeStatus(package.getId(), PackageStatus::Delivered);
+    const auto recorded = manager.history().size();
+
+    REQUIRE_THROWS_AS(manager.assign(package.getId(), "VAR-1"), OperationNotAllowedException);
+    REQUIRE_THROWS_AS(manager.unassign(package.getId()), OperationNotAllowedException);
+    REQUIRE_THROWS_AS(manager.undo(), OperationNotAllowedException);
+    REQUIRE(package.getAssigneeCode() == "C-01");
+    REQUIRE(manager.history().size() == recorded);
+}
+
+TEST_CASE("LogisticsManager does not notify observers about assignments") {
+    RecordingObserver observer;
+    LogisticsManager manager;
+    manager.attach(observer);
+    addCourierAndOffice(manager);
+    const auto& package = manager.accept(ServiceType::Express, 1.0, kBox, "Georgi", "Varna");
+    manager.assign(package.getId(), "C-01");
+    REQUIRE(manager.undo());
+    REQUIRE(observer.notifications().empty());
+}
