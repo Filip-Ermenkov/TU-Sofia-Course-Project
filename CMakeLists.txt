@@ -13,7 +13,16 @@ add_library(project_warnings INTERFACE)
 if(MSVC)
     target_compile_options(project_warnings INTERFACE /W4 /w44062 /permissive- /WX)
 else()
-    target_compile_options(project_warnings INTERFACE -Wall -Wextra -Wpedantic -Werror)
+    target_compile_options(project_warnings INTERFACE
+        -Wall -Wextra -Wpedantic -Werror
+        -Wshadow                # a local name hides another one
+        -Wconversion            # implicit conversion that can lose data
+        -Wsign-conversion       # implicit signed <-> unsigned conversion
+        -Wold-style-cast        # C-style (T)x cast instead of static_cast
+        -Wnon-virtual-dtor      # class with virtual functions but no virtual destructor
+        -Woverloaded-virtual    # a function hides a base class virtual instead of overriding it
+        -Wnull-dereference
+        -Wdouble-promotion)     # float silently widened to double
 endif()
 
 add_library(courier_core STATIC
