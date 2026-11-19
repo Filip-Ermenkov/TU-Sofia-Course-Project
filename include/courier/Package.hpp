@@ -43,6 +43,8 @@ public:
     [[nodiscard]] double chargeableWeightKg() const;
 
     [[nodiscard]] virtual ServiceType serviceType() const = 0;
+    // True for shipments the dispatch module watches (express and fragile). False by default.
+    [[nodiscard]] virtual bool isPriority() const;
     [[nodiscard]] virtual Money deliveryFee() const = 0;
     [[nodiscard]] virtual Money insuranceFee() const;
     [[nodiscard]] Money totalCost() const;

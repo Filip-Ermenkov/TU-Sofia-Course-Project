@@ -13,6 +13,11 @@ TEST_CASE("StandardPackage reports the standard service") {
     REQUIRE(package.serviceType() == ServiceType::Standard);
 }
 
+TEST_CASE("StandardPackage is not a priority shipment") {
+    const StandardPackage package(TrackingId(1), 1.0, Dimensions(10.0), "Ivan", "Sofia");
+    REQUIRE_FALSE(package.isPriority());
+}
+
 TEST_CASE("StandardPackage charges 5.00 plus 1.50 per chargeable kg and 1% insurance") {
     const StandardPackage package(TrackingId(1), 2.0, Dimensions(30.0, 20.0, 10.0), "Ivan", "Sofia",
                                   Money(10000));

@@ -13,6 +13,11 @@ TEST_CASE("ExpressPackage reports the express service") {
     REQUIRE(package.serviceType() == ServiceType::Express);
 }
 
+TEST_CASE("ExpressPackage is a priority shipment") {
+    const ExpressPackage package(TrackingId(1), 1.0, Dimensions(10.0), "Ivan", "Sofia");
+    REQUIRE(package.isPriority());
+}
+
 TEST_CASE("ExpressPackage charges 8.00 plus 2.50 per chargeable kg and 1% insurance") {
     const ExpressPackage package(TrackingId(1), 2.0, Dimensions(30.0, 20.0, 10.0), "Ivan", "Sofia",
                                  Money(10000));

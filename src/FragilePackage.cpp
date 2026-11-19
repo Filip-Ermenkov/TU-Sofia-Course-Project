@@ -15,6 +15,8 @@ FragilePackage::FragilePackage(TrackingId id, double weightKg, Dimensions dimens
 
 ServiceType FragilePackage::serviceType() const { return ServiceType::Fragile; }
 
+bool FragilePackage::isPriority() const { return true; }
+
 Money FragilePackage::deliveryFee() const {
     return weightBasedFee(kBaseFee, kPerKg) + kHandlingFee;
 }

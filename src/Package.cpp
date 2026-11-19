@@ -79,6 +79,8 @@ double Package::chargeableWeightKg() const {
     return std::max(weightKg_, dimensions_.volume() / kVolumetricDivisor);
 }
 
+bool Package::isPriority() const { return false; }
+
 Money Package::insuranceFee() const { return declaredValue_.multipliedBy(kInsuranceRate); }
 
 Money Package::totalCost() const { return deliveryFee() + insuranceFee(); }

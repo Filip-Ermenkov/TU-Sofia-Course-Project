@@ -28,3 +28,9 @@ TEST_CASE("FragilePackage insurance override is used through the base class") {
         TrackingId(1), 2.0, Dimensions(30.0, 20.0, 10.0), "Ivan", "Sofia", Money(10000));
     REQUIRE(package->insuranceFee() == Money(200));
 }
+
+TEST_CASE("FragilePackage is a priority shipment, also through the base class") {
+    const std::unique_ptr<Package> package =
+        std::make_unique<FragilePackage>(TrackingId(1), 1.0, Dimensions(10.0), "Ivan", "Sofia");
+    REQUIRE(package->isPriority());
+}

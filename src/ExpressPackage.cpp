@@ -15,6 +15,8 @@ ExpressPackage::ExpressPackage(TrackingId id, double weightKg, Dimensions dimens
 
 ServiceType ExpressPackage::serviceType() const { return ServiceType::Express; }
 
+bool ExpressPackage::isPriority() const { return true; }
+
 Money ExpressPackage::deliveryFee() const { return weightBasedFee(kBaseFee, kPerKg); }
 
 }  // namespace courier

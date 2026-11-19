@@ -20,6 +20,7 @@ public:
                    std::string destination);
 
     [[nodiscard]] ServiceType serviceType() const override;
+    [[nodiscard]] bool isPriority() const override;
     [[nodiscard]] Money deliveryFee() const override;
     [[nodiscard]] Money insuranceFee() const override;
 };
