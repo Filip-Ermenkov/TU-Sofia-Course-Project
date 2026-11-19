@@ -38,6 +38,7 @@ add_library(courier_core STATIC
     src/Validation.cpp
     src/Money.cpp
     src/Package.cpp
+    src/ParcelDetails.cpp
     src/StandardPackage.cpp
     src/ExpressPackage.cpp
     src/FragilePackage.cpp

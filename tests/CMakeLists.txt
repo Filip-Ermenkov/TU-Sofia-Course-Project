@@ -20,6 +20,7 @@ add_executable(courier_tests
     TrackingIdTests.cpp
     MoneyTests.cpp
     PackageTests.cpp
+    ParcelDetailsTests.cpp
     StandardPackageTests.cpp
     ExpressPackageTests.cpp
     FragilePackageTests.cpp
