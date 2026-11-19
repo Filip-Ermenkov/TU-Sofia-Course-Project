@@ -3,11 +3,15 @@
 #include <algorithm>
 #include <format>
 #include <initializer_list>
+#include <iterator>
+#include <memory>
 #include <ranges>
 #include <utility>
 
+#include "courier/ModifyCommand.hpp"
 #include "courier/OperationType.hpp"
 #include "courier/PackageNotFoundException.hpp"
+#include "courier/RerouteCommand.hpp"
 
 namespace courier {
 
@@ -118,7 +122,56 @@ std::vector<const Package*> LogisticsManager::undelivered() const {
     return result;
 }
 
+void LogisticsManager::reroute(const TrackingId& id, std::string destination) {
+    run(OperationType::Reroute,
+        std::make_unique<RerouteCommand>(findPackage(id), std::move(destination)));
+}
+
+void LogisticsManager::reroute(const TrackingId& id, std::string destination,
+                               std::string recipient) {
+    run(OperationType::Reroute, std::make_unique<RerouteCommand>(
+                                    findPackage(id), std::move(destination), std::move(recipient)));
+}
+
+void LogisticsManager::modify(const TrackingId& id, const ParcelDetails& details) {
+    run(OperationType::Modify, std::make_unique<ModifyCommand>(findPackage(id), details));
+}
+
+// The record is built from the command before it is undone, while its text still describes the
+// change being cancelled.
+bool LogisticsManager::undo() {
+    const ShipmentCommand* next = commands_.nextUndo();
+    if (next == nullptr) {
+        return false;
+    }
+    recordAndRun(OperationRecord(OperationType::Undo, next->getId(), next->describe()),
+                 [this] { commands_.undo(); });
+    return true;
+}
+
+bool LogisticsManager::redo() {
+    const ShipmentCommand* next = commands_.nextRedo();
+    if (next == nullptr) {
+        return false;
+    }
+    recordAndRun(OperationRecord(OperationType::Redo, next->getId(), next->describe()),
+                 [this] { commands_.redo(); });
+    return true;
+}
+
+bool LogisticsManager::canUndo() const { return commands_.canUndo(); }
+
+bool LogisticsManager::canRedo() const { return commands_.canRedo(); }
+
 const std::vector<OperationRecord>& LogisticsManager::history() const { return history_; }
+
+std::vector<OperationRecord> LogisticsManager::cancelledOperations() const {
+    std::vector<OperationRecord> cancelled;
+    std::ranges::copy_if(
+        history_, std::back_inserter(cancelled),
+        [](const OperationRecord& record) { return record.getType() == OperationType::Undo; });
+    return cancelled;
+}
 
 // Same lookup as get(), but gives write access. Private and non-const, so only the manager's own
 // changing functions can modify a shipment.
@@ -158,6 +211,11 @@ void LogisticsManager::recordAndRun(OperationRecord record, const std::function<
         history_.pop_back();
         throw;
     }
+}
+
+void LogisticsManager::run(OperationType type, std::unique_ptr<ShipmentCommand> command) {
+    OperationRecord record(type, command->getId(), command->describe());
+    recordAndRun(std::move(record), [this, &command] { commands_.execute(std::move(command)); });
 }
 
 }  // namespace courier

@@ -9,8 +9,10 @@
 
 #include "courier/InvalidStatusChangeException.hpp"
 #include "courier/LogisticsManager.hpp"
+#include "courier/OperationNotAllowedException.hpp"
 #include "courier/OperationType.hpp"
 #include "courier/PackageNotFoundException.hpp"
+#include "courier/ParcelDetails.hpp"
 #include "courier/StatusObserver.hpp"
 #include "courier/ValidationException.hpp"
 
@@ -18,10 +20,12 @@ using courier::Dimensions;
 using courier::InvalidStatusChangeException;
 using courier::LogisticsManager;
 using courier::Money;
+using courier::OperationNotAllowedException;
 using courier::OperationType;
 using courier::Package;
 using courier::PackageNotFoundException;
 using courier::PackageStatus;
+using courier::ParcelDetails;
 using courier::ServiceType;
 using courier::StatusObserver;
 using courier::TrackingId;
@@ -365,4 +369,112 @@ TEST_CASE("LogisticsManager records nothing for a failed operation") {
     REQUIRE_THROWS_AS(manager.changeStatus(TrackingId(99), PackageStatus::InTransit),
                       PackageNotFoundException);
     REQUIRE(manager.history().size() == 1);
+}
+
+TEST_CASE("LogisticsManager reroutes a shipment with undo and redo") {
+    LogisticsManager manager;
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+    const TrackingId id = package.getId();
+    REQUIRE_FALSE(manager.canUndo());
+
+    manager.reroute(id, "Burgas");
+    REQUIRE(package.getDestination() == "Burgas");
+    REQUIRE(manager.canUndo());
+
+    REQUIRE(manager.undo());
+    REQUIRE(package.getDestination() == "Varna");
+    REQUIRE(manager.canRedo());
+
+    REQUIRE(manager.redo());
+    REQUIRE(package.getDestination() == "Burgas");
+
+    const auto& history = manager.history();
+    REQUIRE(history.size() == 4);
+    REQUIRE(history[1].getType() == OperationType::Reroute);
+    REQUIRE(history[1].getDetails() == "Reroute CR00000001: Varna -> Burgas");
+    REQUIRE(history[2].getType() == OperationType::Undo);
+    REQUIRE(history[2].getDetails() == "Reroute CR00000001: Varna -> Burgas");
+    REQUIRE(history[3].getType() == OperationType::Redo);
+}
+
+TEST_CASE("LogisticsManager reroutes to a new recipient") {
+    LogisticsManager manager;
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+    manager.reroute(package.getId(), "Burgas", "Anna");
+    REQUIRE(package.getRecipient() == "Anna");
+    REQUIRE(manager.undo());
+    REQUIRE(package.getRecipient() == "Georgi");
+}
+
+TEST_CASE("LogisticsManager modifies a shipment and the price follows") {
+    LogisticsManager manager;
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+    const Money oldTotal = package.totalCost();
+
+    manager.modify(package.getId(), ParcelDetails(4.0, kBox, Money(5000)));
+    REQUIRE(package.getWeightKg() == 4.0);
+    REQUIRE(package.totalCost() > oldTotal);
+    REQUIRE(manager.history().back().getType() == OperationType::Modify);
+
+    REQUIRE(manager.undo());
+    REQUIRE(package.totalCost() == oldTotal);
+}
+
+TEST_CASE("LogisticsManager keeps every undo as a cancelled operation") {
+    LogisticsManager manager;
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+    manager.reroute(package.getId(), "Burgas");
+    REQUIRE(manager.undo());
+    manager.reroute(package.getId(), "Ruse");  // clears the redo stack
+    REQUIRE_FALSE(manager.canRedo());
+    REQUIRE(manager.undo());
+
+    const auto cancelled = manager.cancelledOperations();
+    REQUIRE(cancelled.size() == 2);
+    REQUIRE(cancelled[0].getDetails() == "Reroute CR00000001: Varna -> Burgas");
+    REQUIRE(cancelled[1].getDetails() == "Reroute CR00000001: Varna -> Ruse");
+}
+
+TEST_CASE("LogisticsManager has nothing to undo or redo at first") {
+    LogisticsManager manager;
+    REQUIRE_FALSE(manager.undo());
+    REQUIRE_FALSE(manager.redo());
+    REQUIRE(manager.history().empty());
+    REQUIRE(manager.cancelledOperations().empty());
+}
+
+TEST_CASE("LogisticsManager rejects bad changes without recording them") {
+    LogisticsManager manager;
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+    REQUIRE_THROWS_AS(manager.reroute(TrackingId(99), "Burgas"), PackageNotFoundException);
+    REQUIRE_THROWS_AS(manager.reroute(package.getId(), " "), ValidationException);
+    REQUIRE_THROWS_AS(manager.modify(TrackingId(99), ParcelDetails(1.0, kBox)),
+                      PackageNotFoundException);
+    REQUIRE(manager.history().size() == 1);
+    REQUIRE_FALSE(manager.canUndo());
+}
+
+TEST_CASE("LogisticsManager cannot change or undo changes to a delivered shipment") {
+    LogisticsManager manager;
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Georgi", "Varna");
+    manager.reroute(package.getId(), "Burgas");
+    manager.changeStatus(package.getId(), PackageStatus::InTransit);
+    manager.changeStatus(package.getId(), PackageStatus::Delivered);
+    const auto recorded = manager.history().size();
+
+    REQUIRE_THROWS_AS(manager.reroute(package.getId(), "Ruse"), OperationNotAllowedException);
+    REQUIRE_THROWS_AS(manager.undo(), OperationNotAllowedException);
+    REQUIRE(package.getDestination() == "Burgas");
+    REQUIRE(manager.history().size() == recorded);
+    REQUIRE(manager.canUndo());  // still on the stack: nothing was lost
+}
+
+TEST_CASE("LogisticsManager does not notify observers about reroutes") {
+    RecordingObserver observer;
+    LogisticsManager manager;
+    manager.attach(observer);
+    const auto& package = manager.accept(ServiceType::Express, 1.0, kBox, "Georgi", "Varna");
+    manager.reroute(package.getId(), "Burgas");
+    REQUIRE(manager.undo());
+    REQUIRE(observer.notifications().empty());
 }
