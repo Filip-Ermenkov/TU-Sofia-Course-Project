@@ -31,6 +31,7 @@ add_executable(courier_tests
     CommandHistoryTests.cpp
     OperationRecordTests.cpp
     AssigneeKindTests.cpp
+    CourierTests.cpp
     LogisticsManagerTests.cpp
     DispatchModuleTests.cpp)
 

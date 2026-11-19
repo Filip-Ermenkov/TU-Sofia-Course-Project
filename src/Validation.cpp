@@ -1,8 +1,10 @@
 #include "Validation.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <format>
 
+#include "courier/Assignee.hpp"
 #include "courier/Package.hpp"
 #include "courier/ValidationException.hpp"
 
@@ -21,6 +23,20 @@ std::string requireNotBlank(const std::string& field, std::string text) {
         throw ValidationException(std::format("Invalid {}: must not be empty", field));
     }
     return text;
+}
+
+std::string requireCode(std::string code) {
+    // Plain comparisons, not std::isalnum, whose answer depends on the locale.
+    const auto allowed = [](char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-';
+    };
+    if (code.empty() || code.size() > Assignee::kMaxCodeLength ||
+        !std::ranges::all_of(code, allowed)) {
+        throw ValidationException(
+            std::format("Invalid code \"{}\": use 1 to {} characters of A-Z, 0-9 and '-'", code,
+                        Assignee::kMaxCodeLength));
+    }
+    return code;
 }
 
 double requireWeight(double weightKg) {
