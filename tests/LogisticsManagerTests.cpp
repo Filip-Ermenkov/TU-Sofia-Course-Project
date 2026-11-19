@@ -1,11 +1,13 @@
 #include <catch2/catch_test_macros.hpp>
 #include <type_traits>
 
+#include "courier/InvalidStatusChangeException.hpp"
 #include "courier/LogisticsManager.hpp"
 #include "courier/PackageNotFoundException.hpp"
 #include "courier/ValidationException.hpp"
 
 using courier::Dimensions;
+using courier::InvalidStatusChangeException;
 using courier::LogisticsManager;
 using courier::Money;
 using courier::Package;
@@ -83,6 +85,64 @@ TEST_CASE("References to shipments stay valid while more are accepted") {
     }
     REQUIRE(&manager.get(TrackingId(1)) == &first);
     REQUIRE(first.getRecipient() == "Ivan");
+}
+
+TEST_CASE("LogisticsManager changes the status of a shipment") {
+    LogisticsManager manager;
+    const Package& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Ivan", "Sofia");
+
+    manager.changeStatus(TrackingId(1), PackageStatus::InTransit);
+    REQUIRE(package.getStatus() == PackageStatus::InTransit);
+    manager.changeStatus(TrackingId(1), PackageStatus::Delivered);
+    REQUIRE(package.getStatus() == PackageStatus::Delivered);
+}
+
+TEST_CASE("LogisticsManager rejects a status change that is not allowed") {
+    LogisticsManager manager;
+    const Package& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Ivan", "Sofia");
+
+    REQUIRE_THROWS_AS(manager.changeStatus(TrackingId(1), PackageStatus::Delivered),
+                      InvalidStatusChangeException);
+    REQUIRE(package.getStatus() == PackageStatus::Accepted);
+    REQUIRE_THROWS_AS(manager.changeStatus(TrackingId(9), PackageStatus::InTransit),
+                      PackageNotFoundException);
+}
+
+TEST_CASE("LogisticsManager dispatches nothing when no shipment is waiting") {
+    LogisticsManager manager;
+    REQUIRE_FALSE(manager.dispatchNext().has_value());
+    REQUIRE(manager.waitingCount() == 0);
+}
+
+TEST_CASE("LogisticsManager dispatches express shipments first, the rest in arrival order") {
+    LogisticsManager manager;
+    manager.accept(ServiceType::Standard, 1.0, kBox, "A", "Sofia");  // CR00000001
+    manager.accept(ServiceType::Fragile, 1.0, kBox, "B", "Sofia");   // CR00000002
+    manager.accept(ServiceType::Express, 1.0, kBox, "C", "Sofia");   // CR00000003
+    manager.accept(ServiceType::Standard, 1.0, kBox, "D", "Sofia");  // CR00000004
+    manager.accept(ServiceType::Express, 1.0, kBox, "E", "Sofia");   // CR00000005
+    REQUIRE(manager.waitingCount() == 5);
+
+    REQUIRE(manager.dispatchNext() == TrackingId(3));
+    REQUIRE(manager.dispatchNext() == TrackingId(5));
+    REQUIRE(manager.dispatchNext() == TrackingId(1));
+    REQUIRE(manager.dispatchNext() == TrackingId(2));
+    REQUIRE(manager.dispatchNext() == TrackingId(4));
+    REQUIRE_FALSE(manager.dispatchNext().has_value());
+
+    REQUIRE(manager.waitingCount() == 0);
+    REQUIRE(manager.get(TrackingId(4)).getStatus() == PackageStatus::InTransit);
+}
+
+TEST_CASE("LogisticsManager skips queued shipments that already left") {
+    LogisticsManager manager;
+    manager.accept(ServiceType::Standard, 1.0, kBox, "A", "Sofia");
+    manager.accept(ServiceType::Standard, 1.0, kBox, "B", "Sofia");
+    manager.changeStatus(TrackingId(1), PackageStatus::InTransit);
+    REQUIRE(manager.waitingCount() == 1);
+
+    REQUIRE(manager.dispatchNext() == TrackingId(2));
+    REQUIRE_FALSE(manager.dispatchNext().has_value());
 }
 
 TEST_CASE("LogisticsManager cannot be copied or moved") {
