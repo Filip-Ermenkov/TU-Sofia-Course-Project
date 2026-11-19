@@ -12,6 +12,7 @@ add_executable(courier_tests
     LogisticsExceptionTests.cpp
     ValidationExceptionTests.cpp
     InvalidStatusChangeExceptionTests.cpp
+    PackageNotFoundExceptionTests.cpp
     DimensionsTests.cpp
     ServiceTypeTests.cpp
     PackageStatusTests.cpp
