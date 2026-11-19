@@ -42,7 +42,8 @@ add_library(courier_core STATIC
     src/FragilePackage.cpp
     src/PackageFactory.cpp
     src/StatusObserver.cpp
-    src/LogisticsManager.cpp)
+    src/LogisticsManager.cpp
+    src/DispatchModule.cpp)
 
 target_include_directories(courier_core PUBLIC include)
 target_link_libraries(courier_core PRIVATE project_warnings)
