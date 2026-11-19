@@ -4,10 +4,13 @@
 #include <cstdint>
 #include <string>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "courier/InvalidStatusChangeException.hpp"
 #include "courier/LogisticsManager.hpp"
 #include "courier/PackageNotFoundException.hpp"
+#include "courier/StatusObserver.hpp"
 #include "courier/ValidationException.hpp"
 
 using courier::Dimensions;
@@ -18,12 +21,40 @@ using courier::Package;
 using courier::PackageNotFoundException;
 using courier::PackageStatus;
 using courier::ServiceType;
+using courier::StatusObserver;
 using courier::TrackingId;
 using courier::ValidationException;
 
 namespace {
 
 const Dimensions kBox(10.0);
+
+struct Notification {
+    std::uint32_t id;
+    PackageStatus previous;
+    PackageStatus current;
+};
+
+// Remembers every notification, so the tests can check who was told what and in which order.
+class RecordingObserver final : public StatusObserver {
+public:
+    explicit RecordingObserver(std::vector<std::string>* order = nullptr, std::string name = "")
+        : order_(order), name_(std::move(name)) {}
+
+    void onStatusChanged(const Package& package, PackageStatus previous) noexcept override {
+        notifications_.push_back({package.getId().getNumber(), previous, package.getStatus()});
+        if (order_ != nullptr) {
+            order_->push_back(name_);
+        }
+    }
+
+    [[nodiscard]] const std::vector<Notification>& notifications() const { return notifications_; }
+
+private:
+    std::vector<Notification> notifications_;
+    std::vector<std::string>* order_;
+    std::string name_;
+};
 
 }  // namespace
 
@@ -210,4 +241,88 @@ TEST_CASE("LogisticsManager cannot be copied or moved") {
     STATIC_REQUIRE_FALSE(std::is_copy_assignable_v<LogisticsManager>);
     STATIC_REQUIRE_FALSE(std::is_move_constructible_v<LogisticsManager>);
     STATIC_REQUIRE_FALSE(std::is_move_assignable_v<LogisticsManager>);
+}
+
+TEST_CASE("StatusObserver is an abstract interface with a noexcept notification") {
+    STATIC_REQUIRE(std::is_abstract_v<StatusObserver>);
+    STATIC_REQUIRE(std::has_virtual_destructor_v<StatusObserver>);
+    STATIC_REQUIRE(noexcept(std::declval<StatusObserver&>().onStatusChanged(
+        std::declval<const Package&>(), PackageStatus::Accepted)));
+}
+
+TEST_CASE("LogisticsManager notifies observers after a status change") {
+    LogisticsManager manager;
+    RecordingObserver observer;
+    manager.attach(observer);
+    const Package& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Ivan", "Sofia");
+    REQUIRE(observer.notifications().empty());  // accepting is not a status change
+
+    manager.changeStatus(package.getId(), PackageStatus::InTransit);
+    manager.changeStatus(package.getId(), PackageStatus::Delivered);
+
+    REQUIRE(observer.notifications().size() == 2);
+    REQUIRE(observer.notifications()[0].id == 1);
+    REQUIRE(observer.notifications()[0].previous == PackageStatus::Accepted);
+    REQUIRE(observer.notifications()[0].current == PackageStatus::InTransit);
+    REQUIRE(observer.notifications()[1].previous == PackageStatus::InTransit);
+    REQUIRE(observer.notifications()[1].current == PackageStatus::Delivered);
+}
+
+TEST_CASE("LogisticsManager notifies nobody when a status change fails") {
+    LogisticsManager manager;
+    RecordingObserver observer;
+    manager.attach(observer);
+    const Package& package = manager.accept(ServiceType::Express, 1.0, kBox, "Ivan", "Sofia");
+
+    REQUIRE_THROWS_AS(manager.changeStatus(package.getId(), PackageStatus::Delivered),
+                      InvalidStatusChangeException);
+    REQUIRE_THROWS_AS(manager.changeStatus(TrackingId(99), PackageStatus::InTransit),
+                      PackageNotFoundException);
+    REQUIRE(observer.notifications().empty());
+}
+
+TEST_CASE("LogisticsManager notifies observers when it dispatches a shipment") {
+    LogisticsManager manager;
+    RecordingObserver observer;
+    manager.attach(observer);
+    manager.accept(ServiceType::Standard, 1.0, kBox, "Ivan", "Sofia");
+    manager.accept(ServiceType::Express, 1.0, kBox, "Maria", "Varna");
+
+    REQUIRE(manager.dispatchNext() == TrackingId(2));
+    REQUIRE(observer.notifications().size() == 1);
+    REQUIRE(observer.notifications()[0].id == 2);
+    REQUIRE(observer.notifications()[0].current == PackageStatus::InTransit);
+}
+
+TEST_CASE("LogisticsManager notifies every observer once, in the order they were attached") {
+    LogisticsManager manager;
+    std::vector<std::string> order;
+    RecordingObserver first(&order, "first");
+    RecordingObserver second(&order, "second");
+    manager.attach(first);
+    manager.attach(second);
+    manager.attach(first);  // already attached: ignored
+    REQUIRE(manager.observerCount() == 2);
+
+    const Package& package = manager.accept(ServiceType::Fragile, 1.0, kBox, "Ivan", "Sofia");
+    manager.changeStatus(package.getId(), PackageStatus::InTransit);
+
+    REQUIRE(order == std::vector<std::string>{"first", "second"});
+}
+
+TEST_CASE("LogisticsManager stops notifying a detached observer") {
+    LogisticsManager manager;
+    RecordingObserver kept;
+    RecordingObserver removed;
+    manager.attach(kept);
+    manager.attach(removed);
+    manager.detach(removed);
+    manager.detach(removed);  // not attached any more: nothing happens
+    REQUIRE(manager.observerCount() == 1);
+
+    const Package& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Ivan", "Sofia");
+    manager.changeStatus(package.getId(), PackageStatus::InTransit);
+
+    REQUIRE(kept.notifications().size() == 1);
+    REQUIRE(removed.notifications().empty());
 }

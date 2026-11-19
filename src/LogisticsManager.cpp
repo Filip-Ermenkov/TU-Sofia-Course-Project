@@ -48,8 +48,23 @@ const Package& LogisticsManager::get(const TrackingId& id) const {
 
 std::size_t LogisticsManager::packageCount() const { return packages_.size(); }
 
+void LogisticsManager::attach(StatusObserver& observer) {
+    if (std::ranges::find(observers_, &observer) == observers_.end()) {
+        observers_.push_back(&observer);
+    }
+}
+
+void LogisticsManager::detach(StatusObserver& observer) { std::erase(observers_, &observer); }
+
+std::size_t LogisticsManager::observerCount() const { return observers_.size(); }
+
 void LogisticsManager::changeStatus(const TrackingId& id, PackageStatus newStatus) {
-    findPackage(id).setStatus(newStatus);
+    Package& package = findPackage(id);
+    const PackageStatus previous = package.getStatus();
+    package.setStatus(newStatus);  // throws before anyone is told if the step is not allowed
+    for (StatusObserver* observer : observers_) {
+        observer->onStatusChanged(package, previous);
+    }
 }
 
 std::optional<TrackingId> LogisticsManager::dispatchNext() {

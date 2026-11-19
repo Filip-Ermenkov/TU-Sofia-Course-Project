@@ -15,13 +15,15 @@
 #include "courier/PackageFactory.hpp"
 #include "courier/PackageStatus.hpp"
 #include "courier/ServiceType.hpp"
+#include "courier/StatusObserver.hpp"
 #include "courier/TrackingId.hpp"
 
 namespace courier {
 
 // Central register of all shipments. It is their only owner, and it hands out read-only access,
 // so every change to a shipment has to go through it. Accepted shipments wait in two delivery
-// queues: express ones are dispatched first, the rest in the order they arrived.
+// queues: express ones are dispatched first, the rest in the order they arrived. It is also the
+// subject of the Observer pattern: attached observers hear about every status change.
 class LogisticsManager {
 public:
     // Any callable that answers yes or no for a shipment, typically a lambda.
@@ -51,8 +53,15 @@ public:
     [[nodiscard]] const Package& get(const TrackingId& id) const;
     [[nodiscard]] std::size_t packageCount() const;
 
+    // Observers are not owned: each one must outlive the manager or be detached before it is
+    // destroyed. Attaching one twice, or detaching one that is not attached, does nothing.
+    void attach(StatusObserver& observer);
+    void detach(StatusObserver& observer);
+    [[nodiscard]] std::size_t observerCount() const;
+
     // The only way to change a status. Throws PackageNotFoundException for an unknown ID and
-    // InvalidStatusChangeException for a step that is not allowed.
+    // InvalidStatusChangeException for a step that is not allowed. After a successful change every
+    // attached observer is notified; after a failed one, none is.
     void changeStatus(const TrackingId& id, PackageStatus newStatus);
     // Sends the next waiting shipment on its way (In transit) and returns its ID, or nothing if no
     // shipment is waiting.
@@ -78,6 +87,8 @@ private:
     // Accepted status (std::queue cannot remove from the middle) is skipped when it comes up.
     std::queue<TrackingId> expressQueue_;
     std::queue<TrackingId> regularQueue_;
+    // Non-owning and never null, notified in the order they were attached.
+    std::vector<StatusObserver*> observers_;
 };
 
 }  // namespace courier
