@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <ranges>
 #include <utility>
 
 #include "courier/PackageNotFoundException.hpp"
@@ -64,6 +65,28 @@ std::size_t LogisticsManager::waitingCount() const {
         return entry.second->getStatus() == PackageStatus::Accepted;
     });
     return static_cast<std::size_t>(waiting);
+}
+
+std::vector<const Package*> LogisticsManager::filter(const PackagePredicate& predicate) const {
+    std::vector<const Package*> result;
+    for (const auto& package : packages_ | std::views::values) {
+        if (predicate(*package)) {
+            result.push_back(package.get());
+        }
+    }
+    // The map keeps no order, so sort to give the same answer every time.
+    std::ranges::sort(result, {},
+                      [](const Package* package) { return package->getId().getNumber(); });
+    return result;
+}
+
+std::vector<const Package*> LogisticsManager::undelivered() const {
+    auto result = filter(
+        [](const Package& package) { return package.getStatus() != PackageStatus::Delivered; });
+    // Stable, so the tracking ID order from filter() is kept within each status.
+    std::ranges::stable_sort(result, {},
+                             [](const Package* package) { return package->getStatus(); });
+    return result;
 }
 
 // Same lookup as get(), but gives write access. Private and non-const, so only the manager's own

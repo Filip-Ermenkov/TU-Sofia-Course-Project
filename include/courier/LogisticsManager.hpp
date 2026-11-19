@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <queue>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "courier/Dimensions.hpp"
 #include "courier/Money.hpp"
@@ -22,6 +24,9 @@ namespace courier {
 // queues: express ones are dispatched first, the rest in the order they arrived.
 class LogisticsManager {
 public:
+    // Any callable that answers yes or no for a shipment, typically a lambda.
+    using PackagePredicate = std::function<bool(const Package&)>;
+
     // Starts with no shipments; the first one gets CR00000001.
     LogisticsManager();
     // Continues numbering after an ID that was already used, e.g. the highest one in a saved file.
@@ -54,6 +59,12 @@ public:
     std::optional<TrackingId> dispatchNext();
     // Shipments that are accepted but not yet dispatched.
     [[nodiscard]] std::size_t waitingCount() const;
+
+    // Shipments for which the predicate returns true, ordered by tracking ID. The pointers do not
+    // own anything and are never null; they stay valid as long as the manager exists.
+    [[nodiscard]] std::vector<const Package*> filter(const PackagePredicate& predicate) const;
+    // Report of shipments not yet delivered: waiting ones first, then those in transit.
+    [[nodiscard]] std::vector<const Package*> undelivered() const;
 
 private:
     [[nodiscard]] Package& findPackage(const TrackingId& id);

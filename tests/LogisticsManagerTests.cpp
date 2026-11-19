@@ -1,4 +1,8 @@
+#include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <cstddef>
+#include <cstdint>
+#include <string>
 #include <type_traits>
 
 #include "courier/InvalidStatusChangeException.hpp"
@@ -143,6 +147,62 @@ TEST_CASE("LogisticsManager skips queued shipments that already left") {
 
     REQUIRE(manager.dispatchNext() == TrackingId(2));
     REQUIRE_FALSE(manager.dispatchNext().has_value());
+}
+
+TEST_CASE("LogisticsManager filters shipments with a lambda, ordered by tracking ID") {
+    LogisticsManager manager;
+    for (int i = 0; i < 20; ++i) {
+        const auto type = i % 2 == 0 ? ServiceType::Express : ServiceType::Standard;
+        manager.accept(type, 1.0, kBox, "Someone", i % 4 == 0 ? "Varna" : "Sofia");
+    }
+
+    const std::string city = "Varna";
+    const auto toVarna = manager.filter(
+        [&city](const Package& package) { return package.getDestination() == city; });
+
+    REQUIRE(toVarna.size() == 5);
+    for (std::size_t i = 0; i < toVarna.size(); ++i) {
+        REQUIRE(toVarna[i]->getId() == TrackingId(static_cast<std::uint32_t>(4 * i + 1)));
+    }
+    REQUIRE(manager.filter([](const Package&) { return false; }).empty());
+}
+
+TEST_CASE("Filtered shipments can be sorted with a lambda") {
+    LogisticsManager manager;
+    manager.accept(ServiceType::Standard, 4.0, kBox, "A", "Sofia");  // 5.00 + 6.00
+    manager.accept(ServiceType::Express, 1.0, kBox, "B", "Sofia");   // 8.00 + 2.50
+    manager.accept(ServiceType::Fragile, 2.0, kBox, "C", "Sofia");   // 5.00 + 3.00 + 4.00
+
+    auto all = manager.filter([](const Package&) { return true; });
+    std::ranges::sort(all, [](const Package* left, const Package* right) {
+        return left->totalCost() > right->totalCost();
+    });
+
+    REQUIRE(all[0]->getId() == TrackingId(3));
+    REQUIRE(all[1]->getId() == TrackingId(1));
+    REQUIRE(all[2]->getId() == TrackingId(2));
+}
+
+TEST_CASE("LogisticsManager reports undelivered shipments, waiting ones first") {
+    LogisticsManager manager;
+    for (int i = 0; i < 5; ++i) {
+        manager.accept(ServiceType::Standard, 1.0, kBox, "Someone", "Sofia");
+    }
+    manager.changeStatus(TrackingId(2), PackageStatus::InTransit);
+    manager.changeStatus(TrackingId(4), PackageStatus::InTransit);
+    manager.changeStatus(TrackingId(4), PackageStatus::Delivered);
+    manager.changeStatus(TrackingId(5), PackageStatus::InTransit);
+
+    const auto report = manager.undelivered();
+
+    REQUIRE(report.size() == 4);
+    REQUIRE(report[0]->getId() == TrackingId(1));
+    REQUIRE(report[1]->getId() == TrackingId(3));
+    REQUIRE(report[2]->getId() == TrackingId(2));
+    REQUIRE(report[3]->getId() == TrackingId(5));
+    REQUIRE(std::ranges::none_of(report, [](const Package* package) {
+        return package->getStatus() == PackageStatus::Delivered;
+    }));
 }
 
 TEST_CASE("LogisticsManager cannot be copied or moved") {
