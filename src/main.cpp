@@ -7,7 +7,10 @@
 #include "courier/DispatchModule.hpp"
 #include "courier/LogisticsException.hpp"
 #include "courier/LogisticsManager.hpp"
+#include "courier/OperationNotAllowedException.hpp"
+#include "courier/OperationRecord.hpp"
 #include "courier/PackageNotFoundException.hpp"
+#include "courier/ParcelDetails.hpp"
 
 namespace {
 
@@ -15,6 +18,11 @@ void printSummary(const courier::Package& package) {
     std::cout << std::format("  {}  {:<9}{:<12}{:<24}{:>10}\n", package.getId().getValue(),
                              toString(package.serviceType()), toString(package.getStatus()),
                              package.getDestination(), package.totalCost().toString());
+}
+
+void printRecord(const courier::OperationRecord& record) {
+    std::cout << std::format("  {:<15}{}  {}\n", toString(record.getType()),
+                             record.getId().getValue(), record.getDetails());
 }
 
 }  // namespace
@@ -33,14 +41,24 @@ int main() {
         courier::LogisticsManager manager;
         manager.attach(dispatch);
         const Dimensions box(30.0, 20.0, 10.0);
-        manager.accept(ServiceType::Standard, 2.0, box, "Ivan Petrov", "Sofia, 1 Vitosha Blvd");
+        const auto& standard =
+            manager.accept(ServiceType::Standard, 2.0, box, "Ivan Petrov", "Sofia, 1 Vitosha Blvd");
         manager.accept(ServiceType::Fragile, 1.5, box, "Maria Ivanova", "Plovdiv, 5 Main St",
                        Money(20000));
         const auto& express = manager.accept(ServiceType::Express, 3.0, box, "Georgi Dimitrov",
                                              "Varna, 10 Sea Garden", Money(10000));
-        manager.accept(ServiceType::Standard, 8.0, Dimensions(60.0, 40.0, 40.0), "Elena Koleva",
-                       "Ruse, 3 Danube St");
+        const auto& large = manager.accept(ServiceType::Standard, 8.0, Dimensions(60.0, 40.0, 40.0),
+                                           "Elena Koleva", "Ruse, 3 Danube St");
         std::cout << express << '\n';
+
+        // Customer requests go through commands, so each one can be undone and redone.
+        manager.reroute(standard.getId(), "Sofia, 25 Tsarigradsko Shose");
+        manager.undo();
+        manager.redo();
+        manager.modify(large.getId(), courier::ParcelDetails(9.5, Dimensions(60.0, 40.0, 40.0)));
+        manager.undo();
+        std::cout << std::format("{} now goes to {}\n\n", standard.getId().getValue(),
+                                 standard.getDestination());
 
         // Express goes first, then the rest in arrival order. The dispatch module reports the
         // express and fragile ones as they change status.
@@ -50,6 +68,11 @@ int main() {
             }
         }
         manager.changeStatus(express.getId(), PackageStatus::Delivered);
+        try {
+            manager.reroute(express.getId(), "Burgas, 2 Port St");
+        } catch (const courier::OperationNotAllowedException& error) {
+            std::cout << "Reroute refused: " << error.what() << '\n';
+        }
 
         std::cout << "\nSearch results:\n";
         for (const TrackingId id : {TrackingId(2), TrackingId(99)}) {
@@ -72,6 +95,15 @@ int main() {
         });
         for (const courier::Package* package : expensive) {
             printSummary(*package);
+        }
+
+        std::cout << "\nLogistics history:\n";
+        for (const courier::OperationRecord& record : manager.history()) {
+            printRecord(record);
+        }
+        std::cout << "\nCancelled operations:\n";
+        for (const courier::OperationRecord& record : manager.cancelledOperations()) {
+            printRecord(record);
         }
     } catch (const courier::LogisticsException& error) {
         std::cerr << "Error: " << error.what() << '\n';
