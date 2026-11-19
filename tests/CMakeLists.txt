@@ -22,7 +22,8 @@ add_executable(courier_tests
     StandardPackageTests.cpp
     ExpressPackageTests.cpp
     FragilePackageTests.cpp
-    PackageFactoryTests.cpp)
+    PackageFactoryTests.cpp
+    LogisticsManagerTests.cpp)
 
 target_link_libraries(courier_tests PRIVATE courier_core Catch2::Catch2WithMain project_warnings)
 
