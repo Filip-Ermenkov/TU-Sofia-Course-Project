@@ -3,10 +3,14 @@
 #include <format>
 #include <initializer_list>
 #include <iostream>
+#include <memory>
 
+#include "courier/Assignee.hpp"
+#include "courier/Courier.hpp"
 #include "courier/DispatchModule.hpp"
 #include "courier/LogisticsException.hpp"
 #include "courier/LogisticsManager.hpp"
+#include "courier/Office.hpp"
 #include "courier/OperationNotAllowedException.hpp"
 #include "courier/OperationRecord.hpp"
 #include "courier/PackageNotFoundException.hpp"
@@ -43,12 +47,25 @@ int main() {
         const Dimensions box(30.0, 20.0, 10.0);
         const auto& standard =
             manager.accept(ServiceType::Standard, 2.0, box, "Ivan Petrov", "Sofia, 1 Vitosha Blvd");
-        manager.accept(ServiceType::Fragile, 1.5, box, "Maria Ivanova", "Plovdiv, 5 Main St",
-                       Money(20000));
+        const auto& fragile = manager.accept(ServiceType::Fragile, 1.5, box, "Maria Ivanova",
+                                             "Plovdiv, 5 Main St", Money(20000));
         const auto& express = manager.accept(ServiceType::Express, 3.0, box, "Georgi Dimitrov",
                                              "Varna, 10 Sea Garden", Money(10000));
         const auto& large = manager.accept(ServiceType::Standard, 8.0, Dimensions(60.0, 40.0, 40.0),
                                            "Elena Koleva", "Ruse, 3 Danube St");
+
+        // Couriers deliver to the door; at an office the recipient collects the shipment.
+        manager.addAssignee(
+            std::make_unique<courier::Courier>("C-01", "Petar Stoyanov", "0888 123 456"));
+        manager.addAssignee(std::make_unique<courier::Courier>("C-02", "Nikolay Todorov"));
+        manager.addAssignee(
+            std::make_unique<courier::Office>("PLD-1", "Plovdiv Center", "12 Ivan Vazov St"));
+        manager.assign(standard.getId(), "C-01");
+        manager.assign(express.getId(), "C-02");
+        manager.assign(fragile.getId(), "C-02");
+        manager.assign(fragile.getId(), "PLD-1");  // the recipient will collect it
+        manager.assign(large.getId(), "C-01");
+        manager.undo();  // assigned by mistake
         std::cout << express << '\n';
 
         // Customer requests go through commands, so each one can be undone and redone.
@@ -95,6 +112,14 @@ int main() {
         });
         for (const courier::Package* package : expensive) {
             printSummary(*package);
+        }
+
+        std::cout << "\nCouriers and offices:\n";
+        for (const courier::Assignee* assignee : manager.assignees()) {
+            std::cout << "  " << *assignee << '\n';
+            for (const courier::Package* package : manager.assignedTo(assignee->getCode())) {
+                printSummary(*package);
+            }
         }
 
         std::cout << "\nLogistics history:\n";
