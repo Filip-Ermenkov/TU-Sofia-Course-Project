@@ -53,6 +53,7 @@ add_library(courier_core STATIC
     src/AssigneeKind.cpp
     src/Assignee.cpp
     src/Courier.cpp
+    src/Office.cpp
     src/StatusObserver.cpp
     src/LogisticsManager.cpp
     src/DispatchModule.cpp)
