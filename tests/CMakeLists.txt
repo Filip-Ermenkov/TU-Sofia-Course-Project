@@ -25,6 +25,7 @@ add_executable(courier_tests
     ExpressPackageTests.cpp
     FragilePackageTests.cpp
     PackageFactoryTests.cpp
+    RerouteCommandTests.cpp
     LogisticsManagerTests.cpp
     DispatchModuleTests.cpp)
 
