@@ -6,24 +6,8 @@
 
 #include "Validation.hpp"
 #include "courier/InvalidStatusChangeException.hpp"
-#include "courier/ValidationException.hpp"
 
 namespace courier {
-
-namespace {
-
-double requireWeight(double weightKg) {
-    return requireInRange("weight", weightKg, Package::kMaxWeightKg);
-}
-
-Money requireDeclaredValue(Money value) {
-    if (value < Money() || value > Package::kMaxDeclaredValue) {
-        throw ValidationException(std::format("Invalid declared value: {}", value.toString()));
-    }
-    return value;
-}
-
-}  // namespace
 
 Package::Package(TrackingId id, double weightKg, Dimensions dimensions, std::string recipient,
                  std::string destination, Money declaredValue)
