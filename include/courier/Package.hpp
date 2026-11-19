@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <ostream>
 #include <string>
 
@@ -31,6 +32,8 @@ public:
     [[nodiscard]] const std::string& getRecipient() const;
     [[nodiscard]] const std::string& getDestination() const;
     [[nodiscard]] PackageStatus getStatus() const;
+    // Code of the courier or office the shipment is assigned to; empty if it is not assigned.
+    [[nodiscard]] const std::optional<std::string>& getAssigneeCode() const;
 
     void setWeightKg(double weightKg);
     void setDimensions(const Dimensions& dimensions);
@@ -39,6 +42,9 @@ public:
     void setDestination(std::string destination);
     // Only forward, one step at a time; anything else throws InvalidStatusChangeException.
     void setStatus(PackageStatus status);
+    // Checks only the format of the code (see Assignee); the LogisticsManager makes sure such a
+    // courier or office exists. An empty optional removes the assignment.
+    void setAssigneeCode(std::optional<std::string> code);
 
     [[nodiscard]] double chargeableWeightKg() const;
 
@@ -72,6 +78,7 @@ private:
     std::string destination_;
     Money declaredValue_;
     PackageStatus status_ = PackageStatus::Accepted;
+    std::optional<std::string> assigneeCode_;
 };
 
 // Prints the waybill (shipping label) with the price breakdown.

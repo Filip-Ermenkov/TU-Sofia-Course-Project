@@ -36,6 +36,8 @@ const std::string& Package::getDestination() const { return destination_; }
 
 PackageStatus Package::getStatus() const { return status_; }
 
+const std::optional<std::string>& Package::getAssigneeCode() const { return assigneeCode_; }
+
 void Package::setWeightKg(double weightKg) { weightKg_ = requireWeight(weightKg); }
 
 void Package::setDimensions(const Dimensions& dimensions) { dimensions_ = dimensions; }
@@ -59,6 +61,13 @@ void Package::setStatus(PackageStatus status) {
     status_ = status;
 }
 
+void Package::setAssigneeCode(std::optional<std::string> code) {
+    if (code) {
+        *code = requireCode(std::move(*code));
+    }
+    assigneeCode_ = std::move(code);
+}
+
 double Package::chargeableWeightKg() const {
     return std::max(weightKg_, dimensions_.volume() / kVolumetricDivisor);
 }
@@ -78,6 +87,7 @@ std::ostream& operator<<(std::ostream& out, const Package& package) {
     out << std::format("===== WAYBILL {} =====\n", package.getId().getValue())
         << std::format("{:<16}{}\n", "Service:", toString(package.serviceType()))
         << std::format("{:<16}{}\n", "Status:", toString(package.getStatus()))
+        << std::format("{:<16}{}\n", "Assigned to:", package.getAssigneeCode().value_or("-"))
         << std::format("{:<16}{}\n", "Recipient:", package.getRecipient())
         << std::format("{:<16}{}\n", "Destination:", package.getDestination())
         // Rounded for display only; prices are computed from the exact values.

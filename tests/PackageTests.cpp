@@ -2,6 +2,7 @@
 #include <catch2/matchers/catch_matchers.hpp>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <type_traits>
@@ -150,6 +151,7 @@ TEST_CASE("Package prints a waybill with the price breakdown") {
             "===== WAYBILL CR00000042 =====\n"
             "Service:        Standard\n"
             "Status:         Accepted\n"
+            "Assigned to:    -\n"
             "Recipient:      Ivan Petrov\n"
             "Destination:    Sofia, 1 Vitosha Blvd\n"
             "Weight:         2.00 kg (chargeable 2.00 kg)\n"
@@ -158,6 +160,34 @@ TEST_CASE("Package prints a waybill with the price breakdown") {
             "Delivery fee:   8.00\n"
             "Insurance:      1.00\n"
             "Total:          9.00\n");
+}
+
+TEST_CASE("Package starts unassigned and can be assigned and unassigned") {
+    StandardPackage package = makePackage();
+    REQUIRE_FALSE(package.getAssigneeCode().has_value());
+
+    package.setAssigneeCode("C-01");
+    REQUIRE(package.getAssigneeCode() == "C-01");
+    package.setAssigneeCode("VAR-1");
+    REQUIRE(package.getAssigneeCode() == "VAR-1");
+    package.setAssigneeCode(std::nullopt);
+    REQUIRE_FALSE(package.getAssigneeCode().has_value());
+}
+
+TEST_CASE("Package rejects an invalid assignee code and keeps the old one") {
+    StandardPackage package = makePackage();
+    package.setAssigneeCode("C-01");
+    REQUIRE_THROWS_AS(package.setAssigneeCode(""), ValidationException);
+    REQUIRE_THROWS_AS(package.setAssigneeCode("c-01"), ValidationException);
+    REQUIRE(package.getAssigneeCode() == "C-01");
+}
+
+TEST_CASE("Package waybill shows the assigned courier or office") {
+    StandardPackage package = makePackage();
+    package.setAssigneeCode("C-01");
+    std::ostringstream out;
+    out << package;
+    REQUIRE(out.str().find("Assigned to:    C-01\n") != std::string::npos);
 }
 
 TEST_CASE("Package waybill rounds weights and sizes for display") {
