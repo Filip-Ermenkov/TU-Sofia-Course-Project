@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "courier/Assignee.hpp"
 #include "courier/CommandHistory.hpp"
 #include "courier/Dimensions.hpp"
 #include "courier/Money.hpp"
@@ -30,7 +31,8 @@ namespace courier {
 // queues: express ones are dispatched first, the rest in the order they arrived. It is also the
 // subject of the Observer pattern: attached observers hear about every status change. Because every
 // change passes through it, it also keeps the history of all logistics operations. Rerouting and
-// modifying go through the Command pattern, so they can be undone and redone.
+// modifying go through the Command pattern, so they can be undone and redone. It also keeps the
+// couriers and offices that shipments can be assigned to.
 class LogisticsManager {
 public:
     // Any callable that answers yes or no for a shipment, typically a lambda.
@@ -95,6 +97,17 @@ public:
     [[nodiscard]] bool canUndo() const;
     [[nodiscard]] bool canRedo() const;
 
+    // Registers a courier or office, which the manager then owns. Throws std::invalid_argument for
+    // a null pointer and ValidationException if the code is already taken; then registers nothing.
+    // Not recorded in the history: it is not an operation on a shipment.
+    const Assignee& addAssignee(std::unique_ptr<Assignee> assignee);
+    [[nodiscard]] bool hasAssignee(const std::string& code) const;
+    // Throws AssigneeNotFoundException for an unknown code.
+    [[nodiscard]] const Assignee& getAssignee(const std::string& code) const;
+    [[nodiscard]] std::size_t assigneeCount() const;
+    // All couriers and offices, ordered by code. Non-owning, never null.
+    [[nodiscard]] std::vector<const Assignee*> assignees() const;
+
     // Every successful operation, oldest first. A failed operation leaves no entry.
     [[nodiscard]] const std::vector<OperationRecord>& history() const;
     // The cancelled operations: every undo ever made, oldest first. A redo or a new change does
@@ -123,6 +136,8 @@ private:
     // Non-owning and never null, notified in the order they were attached.
     std::vector<StatusObserver*> observers_;
     CommandHistory commands_;
+    // Keyed by code; Assignee is polymorphic, so each one lives on the heap.
+    std::unordered_map<std::string, std::unique_ptr<Assignee>> assignees_;
     std::vector<OperationRecord> history_;
 };
 

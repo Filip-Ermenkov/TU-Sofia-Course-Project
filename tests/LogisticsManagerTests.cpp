@@ -1,14 +1,20 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "courier/AssigneeNotFoundException.hpp"
+#include "courier/Courier.hpp"
 #include "courier/InvalidStatusChangeException.hpp"
 #include "courier/LogisticsManager.hpp"
+#include "courier/Office.hpp"
 #include "courier/OperationNotAllowedException.hpp"
 #include "courier/OperationType.hpp"
 #include "courier/PackageNotFoundException.hpp"
@@ -16,10 +22,14 @@
 #include "courier/StatusObserver.hpp"
 #include "courier/ValidationException.hpp"
 
+using courier::AssigneeKind;
+using courier::AssigneeNotFoundException;
+using courier::Courier;
 using courier::Dimensions;
 using courier::InvalidStatusChangeException;
 using courier::LogisticsManager;
 using courier::Money;
+using courier::Office;
 using courier::OperationNotAllowedException;
 using courier::OperationType;
 using courier::Package;
@@ -477,4 +487,54 @@ TEST_CASE("LogisticsManager does not notify observers about reroutes") {
     manager.reroute(package.getId(), "Burgas");
     REQUIRE(manager.undo());
     REQUIRE(observer.notifications().empty());
+}
+
+TEST_CASE("LogisticsManager registers couriers and offices") {
+    LogisticsManager manager;
+    REQUIRE(manager.assigneeCount() == 0);
+    const auto& courier =
+        manager.addAssignee(std::make_unique<Courier>("C-01", "Ivan Petrov", "0888 123 456"));
+    manager.addAssignee(std::make_unique<Office>("VAR-1", "Varna Center"));
+
+    REQUIRE(courier.getName() == "Ivan Petrov");
+    REQUIRE(manager.assigneeCount() == 2);
+    REQUIRE(manager.hasAssignee("C-01"));
+    REQUIRE_FALSE(manager.hasAssignee("C-02"));
+    REQUIRE(&manager.getAssignee("C-01") == &courier);
+    REQUIRE(manager.getAssignee("VAR-1").kind() == AssigneeKind::Office);
+    REQUIRE(manager.history().empty());  // not an operation on a shipment
+}
+
+TEST_CASE("LogisticsManager lists couriers and offices ordered by code") {
+    LogisticsManager manager;
+    manager.addAssignee(std::make_unique<Office>("VAR-1", "Varna Center"));
+    manager.addAssignee(std::make_unique<Courier>("C-02", "Maria Ivanova"));
+    manager.addAssignee(std::make_unique<Courier>("C-01", "Ivan Petrov"));
+
+    std::vector<std::string> codes;
+    for (const courier::Assignee* assignee : manager.assignees()) {
+        codes.push_back(assignee->getCode());
+    }
+    REQUIRE(codes == std::vector<std::string>{"C-01", "C-02", "VAR-1"});
+}
+
+TEST_CASE("LogisticsManager rejects a duplicate code and keeps the first assignee") {
+    LogisticsManager manager;
+    manager.addAssignee(std::make_unique<Courier>("C-01", "Ivan Petrov"));
+    REQUIRE_THROWS_AS(manager.addAssignee(std::make_unique<Office>("C-01", "Sofia Center")),
+                      ValidationException);
+    REQUIRE(manager.assigneeCount() == 1);
+    REQUIRE(manager.getAssignee("C-01").getName() == "Ivan Petrov");
+}
+
+TEST_CASE("LogisticsManager rejects a missing assignee") {
+    LogisticsManager manager;
+    REQUIRE_THROWS_AS(manager.addAssignee(nullptr), std::invalid_argument);
+    REQUIRE(manager.assigneeCount() == 0);
+}
+
+TEST_CASE("LogisticsManager reports an unknown courier or office code") {
+    const LogisticsManager manager;
+    REQUIRE_THROWS_AS(manager.getAssignee("C-99"), AssigneeNotFoundException);
+    REQUIRE_THROWS_WITH(manager.getAssignee("C-99"), "No courier or office with code C-99");
 }

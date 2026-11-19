@@ -6,12 +6,15 @@
 #include <iterator>
 #include <memory>
 #include <ranges>
+#include <stdexcept>
 #include <utility>
 
+#include "courier/AssigneeNotFoundException.hpp"
 #include "courier/ModifyCommand.hpp"
 #include "courier/OperationType.hpp"
 #include "courier/PackageNotFoundException.hpp"
 #include "courier/RerouteCommand.hpp"
+#include "courier/ValidationException.hpp"
 
 namespace courier {
 
@@ -162,6 +165,47 @@ bool LogisticsManager::redo() {
 bool LogisticsManager::canUndo() const { return commands_.canUndo(); }
 
 bool LogisticsManager::canRedo() const { return commands_.canRedo(); }
+
+const Assignee& LogisticsManager::addAssignee(std::unique_ptr<Assignee> assignee) {
+    if (assignee == nullptr) {
+        throw std::invalid_argument("LogisticsManager::addAssignee needs an assignee");
+    }
+    std::string code = assignee->getCode();
+    const auto [it, inserted] = assignees_.try_emplace(std::move(code), std::move(assignee));
+    if (!inserted) {
+        // When the code exists, try_emplace leaves the pointer untouched, so the new assignee is
+        // simply destroyed on return and the registered one stays.
+        throw ValidationException(std::format("Code {} is already in use", it->first));
+    }
+    return *it->second;
+}
+
+bool LogisticsManager::hasAssignee(const std::string& code) const {
+    return assignees_.contains(code);
+}
+
+const Assignee& LogisticsManager::getAssignee(const std::string& code) const {
+    const auto it = assignees_.find(code);
+    if (it == assignees_.end()) {
+        throw AssigneeNotFoundException(std::format("No courier or office with code {}", code));
+    }
+    return *it->second;
+}
+
+std::size_t LogisticsManager::assigneeCount() const { return assignees_.size(); }
+
+std::vector<const Assignee*> LogisticsManager::assignees() const {
+    std::vector<const Assignee*> result;
+    result.reserve(assignees_.size());
+    for (const auto& assignee : assignees_ | std::views::values) {
+        result.push_back(assignee.get());
+    }
+    // Returning a reference avoids copying a code for every comparison.
+    std::ranges::sort(result, {}, [](const Assignee* assignee) -> const std::string& {
+        return assignee->getCode();
+    });
+    return result;
+}
 
 const std::vector<OperationRecord>& LogisticsManager::history() const { return history_; }
 
