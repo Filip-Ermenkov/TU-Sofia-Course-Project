@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -25,3 +27,16 @@ private:
 };
 
 }  // namespace courier
+
+// Lets TrackingId be the key of std::unordered_map and std::unordered_set. Two equal IDs have the
+// same number, so they get the same hash, which is the one rule a hash must follow.
+namespace std {
+
+template <>
+struct hash<courier::TrackingId> {
+    size_t operator()(const courier::TrackingId& id) const noexcept {
+        return hash<uint32_t>{}(id.getNumber());
+    }
+};
+
+}  // namespace std
