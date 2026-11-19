@@ -11,6 +11,7 @@
 
 #include "courier/Dimensions.hpp"
 #include "courier/Money.hpp"
+#include "courier/OperationRecord.hpp"
 #include "courier/Package.hpp"
 #include "courier/PackageFactory.hpp"
 #include "courier/PackageStatus.hpp"
@@ -23,7 +24,8 @@ namespace courier {
 // Central register of all shipments. It is their only owner, and it hands out read-only access,
 // so every change to a shipment has to go through it. Accepted shipments wait in two delivery
 // queues: express ones are dispatched first, the rest in the order they arrived. It is also the
-// subject of the Observer pattern: attached observers hear about every status change.
+// subject of the Observer pattern: attached observers hear about every status change. Because every
+// change passes through it, it also keeps the history of all logistics operations.
 class LogisticsManager {
 public:
     // Any callable that answers yes or no for a shipment, typically a lambda.
@@ -75,20 +77,29 @@ public:
     // Report of shipments not yet delivered: waiting ones first, then those in transit.
     [[nodiscard]] std::vector<const Package*> undelivered() const;
 
+    // Every successful operation, oldest first. A failed operation leaves no entry.
+    [[nodiscard]] const std::vector<OperationRecord>& history() const;
+
 private:
     [[nodiscard]] Package& findPackage(const TrackingId& id);
     [[nodiscard]] std::queue<TrackingId>& queueFor(const Package& package);
-    // Pops IDs until it finds a shipment that is still waiting.
-    [[nodiscard]] std::optional<TrackingId> takeNextWaiting();
+    // Drops IDs of shipments that are no longer waiting and returns the queue whose front is the
+    // next shipment to dispatch, or nullptr if none is waiting.
+    [[nodiscard]] std::queue<TrackingId>* queueOfNextWaiting();
+    // Adds the record, then runs the change. If the change throws, the record is removed again,
+    // so the history lists only what really happened.
+    void recordAndRun(OperationRecord record, const std::function<void()>& change);
 
     PackageFactory factory_;
     std::unordered_map<TrackingId, std::unique_ptr<Package>> packages_;
     // IDs, not pointers: the map stays the only owner. An ID whose shipment already left the
-    // Accepted status (std::queue cannot remove from the middle) is skipped when it comes up.
+    // Accepted status, or was never registered because accept() failed, is skipped when it comes
+    // up (std::queue cannot remove from the middle).
     std::queue<TrackingId> expressQueue_;
     std::queue<TrackingId> regularQueue_;
     // Non-owning and never null, notified in the order they were attached.
     std::vector<StatusObserver*> observers_;
+    std::vector<OperationRecord> history_;
 };
 
 }  // namespace courier

@@ -9,6 +9,7 @@
 
 #include "courier/InvalidStatusChangeException.hpp"
 #include "courier/LogisticsManager.hpp"
+#include "courier/OperationType.hpp"
 #include "courier/PackageNotFoundException.hpp"
 #include "courier/StatusObserver.hpp"
 #include "courier/ValidationException.hpp"
@@ -17,6 +18,7 @@ using courier::Dimensions;
 using courier::InvalidStatusChangeException;
 using courier::LogisticsManager;
 using courier::Money;
+using courier::OperationType;
 using courier::Package;
 using courier::PackageNotFoundException;
 using courier::PackageStatus;
@@ -325,4 +327,42 @@ TEST_CASE("LogisticsManager stops notifying a detached observer") {
 
     REQUIRE(kept.notifications().size() == 1);
     REQUIRE(removed.notifications().empty());
+}
+
+TEST_CASE("LogisticsManager starts with an empty history") {
+    const LogisticsManager manager;
+    REQUIRE(manager.history().empty());
+}
+
+TEST_CASE("LogisticsManager records accepted shipments and status changes") {
+    LogisticsManager manager;
+    const auto& package =
+        manager.accept(ServiceType::Express, 1.0, kBox, "Georgi Dimitrov", "Varna, 10 Sea Garden");
+    REQUIRE(manager.dispatchNext() == package.getId());
+    manager.changeStatus(package.getId(), PackageStatus::Delivered);
+
+    const auto& history = manager.history();
+    REQUIRE(history.size() == 3);
+    REQUIRE(history[0].getType() == OperationType::Accept);
+    REQUIRE(history[0].getId() == package.getId());
+    REQUIRE(history[0].getDetails() ==
+            "Express shipment to Varna, 10 Sea Garden for Georgi Dimitrov");
+    REQUIRE(history[1].getType() == OperationType::StatusChange);
+    REQUIRE(history[1].getDetails() == "Accepted -> In transit");
+    REQUIRE(history[2].getType() == OperationType::StatusChange);
+    REQUIRE(history[2].getDetails() == "In transit -> Delivered");
+}
+
+TEST_CASE("LogisticsManager records nothing for a failed operation") {
+    LogisticsManager manager;
+    REQUIRE_THROWS_AS(manager.accept(ServiceType::Standard, -1.0, kBox, "Ivan", "Sofia"),
+                      ValidationException);
+    REQUIRE(manager.history().empty());
+
+    const auto& package = manager.accept(ServiceType::Standard, 1.0, kBox, "Ivan", "Sofia");
+    REQUIRE_THROWS_AS(manager.changeStatus(package.getId(), PackageStatus::Delivered),
+                      InvalidStatusChangeException);
+    REQUIRE_THROWS_AS(manager.changeStatus(TrackingId(99), PackageStatus::InTransit),
+                      PackageNotFoundException);
+    REQUIRE(manager.history().size() == 1);
 }

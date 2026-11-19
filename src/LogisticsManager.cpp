@@ -1,10 +1,12 @@
 #include "courier/LogisticsManager.hpp"
 
 #include <algorithm>
+#include <format>
 #include <initializer_list>
 #include <ranges>
 #include <utility>
 
+#include "courier/OperationType.hpp"
 #include "courier/PackageNotFoundException.hpp"
 
 namespace courier {
@@ -21,13 +23,19 @@ const Package& LogisticsManager::accept(ServiceType type, double weightKg, Dimen
     // The factory never repeats an ID, so the key is always new.
     const TrackingId id = package->getId();
     const auto it = packages_.emplace(id, std::move(package)).first;
+    const Package& accepted = *it->second;
     try {
-        queueFor(*it->second).push(id);
+        queueFor(accepted).push(id);
+        history_.emplace_back(OperationType::Accept, id,
+                              std::format("{} shipment to {} for {}", toString(type),
+                                          accepted.getDestination(), accepted.getRecipient()));
     } catch (...) {
-        packages_.erase(it);  // out of memory: undo the registration, so nothing half-done stays
+        // Out of memory: undo the registration, so nothing half-done stays. An ID already in the
+        // queue is skipped later, because its shipment is not registered.
+        packages_.erase(it);
         throw;
     }
-    return *it->second;
+    return accepted;
 }
 
 const Package& LogisticsManager::accept(ServiceType type, double weightKg, Dimensions dimensions,
@@ -61,18 +69,24 @@ std::size_t LogisticsManager::observerCount() const { return observers_.size(); 
 void LogisticsManager::changeStatus(const TrackingId& id, PackageStatus newStatus) {
     Package& package = findPackage(id);
     const PackageStatus previous = package.getStatus();
-    package.setStatus(newStatus);  // throws before anyone is told if the step is not allowed
+    // setStatus throws, and nothing is recorded or told, if the step is not allowed.
+    recordAndRun(OperationRecord(OperationType::StatusChange, id,
+                                 std::format("{} -> {}", toString(previous), toString(newStatus))),
+                 [&package, newStatus] { package.setStatus(newStatus); });
     for (StatusObserver* observer : observers_) {
         observer->onStatusChanged(package, previous);
     }
 }
 
 std::optional<TrackingId> LogisticsManager::dispatchNext() {
-    const auto next = takeNextWaiting();
-    if (next) {
-        changeStatus(*next, PackageStatus::InTransit);
+    std::queue<TrackingId>* queue = queueOfNextWaiting();
+    if (queue == nullptr) {
+        return std::nullopt;
     }
-    return next;
+    const TrackingId id = queue->front();
+    changeStatus(id, PackageStatus::InTransit);
+    queue->pop();  // only now: if the change throws, the shipment keeps its place in the queue
+    return id;
 }
 
 std::size_t LogisticsManager::waitingCount() const {
@@ -104,6 +118,8 @@ std::vector<const Package*> LogisticsManager::undelivered() const {
     return result;
 }
 
+const std::vector<OperationRecord>& LogisticsManager::history() const { return history_; }
+
 // Same lookup as get(), but gives write access. Private and non-const, so only the manager's own
 // changing functions can modify a shipment.
 Package& LogisticsManager::findPackage(const TrackingId& id) {
@@ -118,18 +134,30 @@ std::queue<TrackingId>& LogisticsManager::queueFor(const Package& package) {
     return package.serviceType() == ServiceType::Express ? expressQueue_ : regularQueue_;
 }
 
-std::optional<TrackingId> LogisticsManager::takeNextWaiting() {
+std::queue<TrackingId>* LogisticsManager::queueOfNextWaiting() {
     // Express queue first; the regular one only when no express shipment is waiting.
     for (std::queue<TrackingId>* queue : {&expressQueue_, &regularQueue_}) {
         while (!queue->empty()) {
-            const TrackingId id = queue->front();
-            queue->pop();
-            if (get(id).getStatus() == PackageStatus::Accepted) {
-                return id;
+            const auto it = packages_.find(queue->front());
+            if (it != packages_.end() && it->second->getStatus() == PackageStatus::Accepted) {
+                return queue;
             }
+            queue->pop();
         }
     }
-    return std::nullopt;
+    return nullptr;
+}
+
+// Adding the record first means the only step left after the change is popping it on failure,
+// and pop_back cannot throw.
+void LogisticsManager::recordAndRun(OperationRecord record, const std::function<void()>& change) {
+    history_.push_back(std::move(record));
+    try {
+        change();
+    } catch (...) {
+        history_.pop_back();
+        throw;
+    }
 }
 
 }  // namespace courier
