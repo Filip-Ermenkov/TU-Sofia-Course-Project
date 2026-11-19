@@ -14,6 +14,7 @@ add_executable(courier_tests
     InvalidStatusChangeExceptionTests.cpp
     PackageNotFoundExceptionTests.cpp
     OperationNotAllowedExceptionTests.cpp
+    AssigneeNotFoundExceptionTests.cpp
     DimensionsTests.cpp
     ServiceTypeTests.cpp
     PackageStatusTests.cpp

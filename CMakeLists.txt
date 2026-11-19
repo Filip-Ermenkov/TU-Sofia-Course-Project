@@ -31,6 +31,7 @@ add_library(courier_core STATIC
     src/InvalidStatusChangeException.cpp
     src/PackageNotFoundException.cpp
     src/OperationNotAllowedException.cpp
+    src/AssigneeNotFoundException.cpp
     src/Dimensions.cpp
     src/ServiceType.cpp
     src/PackageStatus.cpp
