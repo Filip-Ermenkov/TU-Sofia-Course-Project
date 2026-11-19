@@ -4,6 +4,7 @@
 #include <initializer_list>
 #include <iostream>
 
+#include "courier/DispatchModule.hpp"
 #include "courier/LogisticsException.hpp"
 #include "courier/LogisticsManager.hpp"
 #include "courier/PackageNotFoundException.hpp"
@@ -27,7 +28,10 @@ int main() {
 
     std::cout << "Courier Shipment Management System\n\n";
     try {
+        // Declared first, so it is destroyed after the manager that points to it.
+        courier::DispatchModule dispatch(std::cout);
         courier::LogisticsManager manager;
+        manager.attach(dispatch);
         const Dimensions box(30.0, 20.0, 10.0);
         manager.accept(ServiceType::Standard, 2.0, box, "Ivan Petrov", "Sofia, 1 Vitosha Blvd");
         manager.accept(ServiceType::Fragile, 1.5, box, "Maria Ivanova", "Plovdiv, 5 Main St",
@@ -38,8 +42,9 @@ int main() {
                        "Ruse, 3 Danube St");
         std::cout << express << '\n';
 
-        // Express goes first, then the rest in arrival order.
-        for (int i = 0; i < 2; ++i) {
+        // Express goes first, then the rest in arrival order. The dispatch module reports the
+        // express and fragile ones as they change status.
+        for (int i = 0; i < 3; ++i) {
             if (const auto id = manager.dispatchNext()) {
                 std::cout << "Dispatched " << id->getValue() << '\n';
             }
