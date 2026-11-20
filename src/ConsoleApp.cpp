@@ -1,22 +1,48 @@
 #include "courier/ConsoleApp.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdlib>
 #include <format>
+#include <functional>
 #include <iostream>
+#include <string>
 #include <utility>
 
 #include "courier/AssigneeNotFoundException.hpp"
 #include "courier/ConsoleFormat.hpp"
+#include "courier/Dimensions.hpp"
 #include "courier/InputParsing.hpp"
 #include "courier/InvalidStatusChangeException.hpp"
 #include "courier/LogisticsException.hpp"
+#include "courier/Money.hpp"
 #include "courier/OperationNotAllowedException.hpp"
 #include "courier/PackageNotFoundException.hpp"
 #include "courier/StorageException.hpp"
 #include "courier/ValidationException.hpp"
 
 namespace courier {
+
+namespace {
+
+constexpr std::array kServiceTypes{ServiceType::Standard, ServiceType::Express,
+                                   ServiceType::Fragile};
+constexpr std::array kStatuses{PackageStatus::Accepted, PackageStatus::InTransit,
+                               PackageStatus::Delivered};
+
+// The display names of the values, in the same order, for InputReader::askChoice.
+template <typename Enum, std::size_t N>
+std::vector<std::string_view> namesOf(const std::array<Enum, N>& values) {
+    std::vector<std::string_view> names;
+    names.reserve(N);
+    for (const Enum value : values) {
+        names.push_back(toString(value));
+    }
+    return names;
+}
+
+}  // namespace
 
 ConsoleApp::ConsoleApp() : ConsoleApp(std::cin, std::cout, CsvStorage()) {}
 
@@ -30,8 +56,11 @@ ConsoleApp::ConsoleApp(std::istream& in, std::ostream& out, CsvStorage storage)
 
 std::vector<ConsoleApp::MenuItem> ConsoleApp::buildMenu() {
     return {
+        {1, "Shipments", "Accept a new shipment", [this] { return acceptShipment(); }},
         {2, "Shipments", "Find a shipment by tracking ID", [this] { return findShipment(); }},
         {3, "Shipments", "List all shipments", [this] { return listShipments(); }},
+        {4, "Shipments", "Report: undelivered shipments", [this] { return reportUndelivered(); }},
+        {5, "Shipments", "Filter shipments", [this] { return filterShipments(); }},
     };
 }
 
@@ -169,6 +198,65 @@ void ConsoleApp::printPackages(const std::vector<const Package*>& packages) cons
     }
 }
 
+std::optional<ServiceType> ConsoleApp::askServiceType() {
+    const auto choice = input_.askChoice("Service", namesOf(kServiceTypes));
+    if (!choice) {
+        return std::nullopt;
+    }
+    return kServiceTypes.at(*choice);
+}
+
+std::optional<PackageStatus> ConsoleApp::askStatus(std::string_view prompt) {
+    const auto choice = input_.askChoice(prompt, namesOf(kStatuses));
+    if (!choice) {
+        return std::nullopt;
+    }
+    return kStatuses.at(*choice);
+}
+
+bool ConsoleApp::acceptShipment() {
+    const auto type = askServiceType();
+    if (!type) {
+        return false;
+    }
+    const auto weight =
+        input_.askNumber(std::format("Weight in kg (up to {})", Package::kMaxWeightKg));
+    if (!weight) {
+        return false;
+    }
+    const std::string sidePrompt = std::format("in cm (up to {})", Dimensions::kMaxSideCm);
+    const auto length = input_.askNumber("Length " + sidePrompt);
+    if (!length) {
+        return false;
+    }
+    const auto width = input_.askNumber("Width " + sidePrompt);
+    if (!width) {
+        return false;
+    }
+    const auto height = input_.askNumber("Height " + sidePrompt);
+    if (!height) {
+        return false;
+    }
+    auto recipient = input_.askText("Recipient");
+    if (!recipient) {
+        return false;
+    }
+    auto destination = input_.askText("Destination");
+    if (!destination) {
+        return false;
+    }
+    const auto declaredValue = input_.askMoney(
+        std::format("Declared value (up to {})", Package::kMaxDeclaredValue.toString()), Money());
+    if (!declaredValue) {
+        return false;
+    }
+    const Package& package =
+        manager_->accept(*type, *weight, Dimensions(*length, *width, *height),
+                         std::move(*recipient), std::move(*destination), *declaredValue);
+    out_ << "Shipment accepted.\n" << package;
+    return true;
+}
+
 bool ConsoleApp::findShipment() {
     const auto id = input_.askTrackingId("Tracking ID");
     if (!id) {
@@ -179,7 +267,69 @@ bool ConsoleApp::findShipment() {
 }
 
 bool ConsoleApp::listShipments() {
-    printPackages(manager_->filter([](const Package&) { return true; }));
+    const auto order =
+        input_.askChoice("Order", {"By tracking ID", "By total cost, highest first"});
+    if (!order) {
+        return false;
+    }
+    auto packages = manager_->filter([](const Package&) { return true; });
+    if (*order == 1) {
+        // Stable, so shipments that cost the same stay in tracking ID order.
+        std::ranges::stable_sort(packages, std::ranges::greater{},
+                                 [](const Package* package) { return package->totalCost(); });
+    }
+    printPackages(packages);
+    return false;
+}
+
+bool ConsoleApp::reportUndelivered() {
+    out_ << "Waiting shipments first, then those in transit:\n";
+    printPackages(manager_->undelivered());
+    return false;
+}
+
+bool ConsoleApp::filterShipments() {
+    const auto kind = input_.askChoice(
+        "Filter",
+        {"By service", "By status", "By destination (contains text)", "By total cost (at least)"});
+    if (!kind) {
+        return false;
+    }
+    LogisticsManager::PackagePredicate predicate;
+    switch (*kind) {
+        case 0:
+            if (const auto type = askServiceType()) {
+                predicate = [type = *type](const Package& package) {
+                    return package.serviceType() == type;
+                };
+            }
+            break;
+        case 1:
+            if (const auto status = askStatus("Status")) {
+                predicate = [status = *status](const Package& package) {
+                    return package.getStatus() == status;
+                };
+            }
+            break;
+        case 2:
+            if (const auto text = input_.askText("Destination contains")) {
+                // Upper-cased on both sides, so the letter case does not matter.
+                predicate = [part = toUpper(*text)](const Package& package) {
+                    return toUpper(package.getDestination()).find(part) != std::string::npos;
+                };
+            }
+            break;
+        case 3:
+            if (const auto minimum = input_.askMoney("Total cost at least")) {
+                predicate = [minimum = *minimum](const Package& package) {
+                    return package.totalCost() >= minimum;
+                };
+            }
+            break;
+    }
+    if (predicate) {
+        printPackages(manager_->filter(predicate));
+    }
     return false;
 }
 

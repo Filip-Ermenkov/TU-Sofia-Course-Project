@@ -6,12 +6,14 @@
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <utility>
 
 #include "courier/ConsoleApp.hpp"
 #include "courier/CsvStorage.hpp"
 #include "courier/Dimensions.hpp"
 #include "courier/LogisticsManager.hpp"
 #include "courier/ServiceType.hpp"
+#include "courier/TrackingId.hpp"
 
 using courier::ConsoleApp;
 using courier::CsvStorage;
@@ -85,7 +87,9 @@ TEST_CASE("ConsoleApp starts empty on the first run and exits on 0") {
     REQUIRE(result.exitCode == EXIT_SUCCESS);
     REQUIRE(contains(result.shown, "Loaded 0 shipments, 0 couriers and offices and 0 history"));
     REQUIRE(contains(result.shown, "0 shipments (0 waiting), 0 couriers and offices\n"));
-    REQUIRE(contains(result.shown, "Shipments\n   2  Find a shipment by tracking ID\n"));
+    REQUIRE(
+        contains(result.shown,
+                 "Shipments\n   1  Accept a new shipment\n   2  Find a shipment by tracking ID\n"));
     REQUIRE(contains(result.shown, "   0  Exit\n"));
     REQUIRE(result.shown.ends_with("Goodbye.\n"));
     // Nothing changed, so nothing was written.
@@ -109,7 +113,7 @@ TEST_CASE("ConsoleApp asks again for a choice that is not on the menu") {
 TEST_CASE("ConsoleApp loads the saved data and lists it") {
     const TempDir dir;
     saveTwoShipments(dir.path());
-    const Result result = runSession(dir.path(), "3\n0\n");
+    const Result result = runSession(dir.path(), "3\n1\n0\n");
     REQUIRE(contains(result.shown, "Loaded 2 shipments, 0 couriers and offices and 2 history"));
     REQUIRE(contains(result.shown, "2 shipments (2 waiting)"));
     REQUIRE(contains(result.shown, "CR00000001  Standard  Accepted    -           Sofia"));
@@ -118,7 +122,7 @@ TEST_CASE("ConsoleApp loads the saved data and lists it") {
 
 TEST_CASE("ConsoleApp lists no shipments as none") {
     const TempDir dir;
-    REQUIRE(contains(runSession(dir.path(), "3\n0\n").shown, "  (none)\n"));
+    REQUIRE(contains(runSession(dir.path(), "3\n1\n0\n").shown, "  (none)\n"));
 }
 
 TEST_CASE("ConsoleApp finds a shipment and prints its waybill") {
@@ -149,8 +153,108 @@ TEST_CASE("ConsoleApp leaves damaged files alone unless the user agrees to start
     REQUIRE(contains(refused.shown, "The files were left as they are.\n"));
     REQUIRE(readFile(file) == "not a header\n");
 
-    const Result accepted = runSession(dir.path(), "y\n3\n0\n");
+    const Result accepted = runSession(dir.path(), "y\n3\n1\n0\n");
     REQUIRE(accepted.exitCode == EXIT_SUCCESS);
     REQUIRE(contains(accepted.shown, "0 shipments (0 waiting)"));
     REQUIRE(readFile(file) == "not a header\n");  // replaced only when a change is saved
+}
+
+namespace {
+
+// Typed answers for accepting a 2 kg Standard shipment of 30 x 20 x 10 cm, not insured.
+const std::string kAcceptStandard = "1\n1\n2\n30\n20\n10\nIvan Petrov\nSofia, 1 Vitosha Blvd\n\n";
+
+}  // namespace
+
+TEST_CASE("ConsoleApp accepts a shipment, shows its waybill and saves it") {
+    const TempDir dir;
+    const Result result = runSession(dir.path(), kAcceptStandard + "0\n");
+    REQUIRE(result.exitCode == EXIT_SUCCESS);
+    REQUIRE(contains(result.shown, "Weight in kg (up to 1000): "));
+    REQUIRE(contains(result.shown, "Length in cm (up to 500): "));
+    REQUIRE(contains(result.shown, "Declared value (up to 1000000.00) [0.00]: "));
+    REQUIRE(contains(result.shown, "Shipment accepted.\n===== WAYBILL CR00000001 =====\n"));
+    REQUIRE(contains(result.shown, "1 shipments (1 waiting)"));
+
+    const auto saved = CsvStorage(dir.path()).load();
+    REQUIRE(saved->packageCount() == 1);
+    REQUIRE(saved->get(courier::TrackingId(1)).getRecipient() == "Ivan Petrov");
+}
+
+TEST_CASE("ConsoleApp continues the tracking numbers after a restart") {
+    const TempDir dir;
+    runSession(dir.path(), kAcceptStandard + "0\n");
+    const Result second = runSession(dir.path(), kAcceptStandard + "0\n");
+    REQUIRE(contains(second.shown, "===== WAYBILL CR00000002 =====\n"));
+}
+
+TEST_CASE("ConsoleApp rejects invalid values and saves nothing") {
+    const TempDir dir;
+    const Result result =
+        runSession(dir.path(), "1\n1\n2000\n30\n20\n10\nIvan Petrov\nSofia\n\n0\n");
+    REQUIRE(result.exitCode == EXIT_SUCCESS);
+    REQUIRE(contains(result.shown, "Rejected: Invalid weight: 2000\n"));
+    REQUIRE(contains(result.shown, "0 shipments (0 waiting)"));
+    REQUIRE_FALSE(fs::exists(dir.path() / CsvStorage::kShipmentsFile));
+}
+
+TEST_CASE("ConsoleApp cancels an action on an empty line") {
+    const TempDir dir;
+    const Result result = runSession(dir.path(), "1\n1\n2\n\n0\n");
+    REQUIRE(result.exitCode == EXIT_SUCCESS);
+    REQUIRE(contains(result.shown, "0 shipments (0 waiting)"));
+    REQUIRE_FALSE(contains(result.shown, "Rejected"));
+    REQUIRE_FALSE(fs::exists(dir.path() / CsvStorage::kShipmentsFile));
+}
+
+TEST_CASE("ConsoleApp lists shipments by total cost") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());  // Standard 8.00, Express 15.50
+    const std::string shown = runSession(dir.path(), "3\n2\n0\n").shown;
+    REQUIRE(shown.find("CR00000002  Express") < shown.find("CR00000001  Standard"));
+}
+
+TEST_CASE("ConsoleApp reports the undelivered shipments") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const std::string shown = runSession(dir.path(), "4\n0\n").shown;
+    REQUIRE(contains(shown, "Waiting shipments first, then those in transit:\n"));
+    REQUIRE(contains(shown, "CR00000001  Standard"));
+    REQUIRE(contains(shown, "CR00000002  Express"));
+}
+
+TEST_CASE("ConsoleApp filters shipments with each kind of filter") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const auto filtered = [&dir](const std::string& typed) {
+        const std::string shown = runSession(dir.path(), "5\n" + typed + "0\n").shown;
+        return std::pair(contains(shown, "CR00000001  "), contains(shown, "CR00000002  "));
+    };
+    REQUIRE(filtered("1\n2\n") == std::pair(false, true));    // Express
+    REQUIRE(filtered("2\n1\n") == std::pair(true, true));     // Accepted
+    REQUIRE(filtered("2\n3\n") == std::pair(false, false));   // Delivered
+    REQUIRE(filtered("3\nvar\n") == std::pair(false, true));  // destination, any case
+    REQUIRE(filtered("4\n10\n") == std::pair(false, true));   // at least 10.00
+    REQUIRE(filtered("4\n8\n") == std::pair(true, true));     // at least 8.00
+}
+
+TEST_CASE("ConsoleApp warns when saving fails and keeps the change in memory") {
+    const TempDir dir;
+    const fs::path taken = dir.path() / "taken";
+    std::ofstream(taken) << "a file, not a folder";
+    const Result result = runSession(taken, kAcceptStandard + "3\n1\n");
+    REQUIRE(contains(result.shown, "Warning: the changes could not be saved: "));
+    REQUIRE(contains(result.shown, "1 shipments (1 waiting)"));
+    // The input ended with the change still unsaved.
+    REQUIRE(result.exitCode == EXIT_FAILURE);
+}
+
+TEST_CASE("ConsoleApp asks before exiting with unsaved changes") {
+    const TempDir dir;
+    const fs::path taken = dir.path() / "taken";
+    std::ofstream(taken) << "a file, not a folder";
+    const Result result = runSession(taken, kAcceptStandard + "0\nn\n0\ny\n");
+    REQUIRE(contains(result.shown, "Exit anyway and lose the unsaved changes? (y/N): "));
+    REQUIRE(result.exitCode == EXIT_FAILURE);
+    REQUIRE(result.shown.ends_with("Goodbye.\n"));
 }

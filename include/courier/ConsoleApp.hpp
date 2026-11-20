@@ -4,6 +4,7 @@
 #include <functional>
 #include <istream>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string_view>
 #include <vector>
@@ -13,6 +14,8 @@
 #include "courier/InputReader.hpp"
 #include "courier/LogisticsManager.hpp"
 #include "courier/Package.hpp"
+#include "courier/PackageStatus.hpp"
+#include "courier/ServiceType.hpp"
 
 namespace courier {
 
@@ -58,9 +61,14 @@ private:
     [[nodiscard]] int finish() const;
 
     void printPackages(const std::vector<const Package*>& packages) const;
+    [[nodiscard]] std::optional<ServiceType> askServiceType();
+    [[nodiscard]] std::optional<PackageStatus> askStatus(std::string_view prompt);
 
+    bool acceptShipment();
     bool findShipment();
     bool listShipments();
+    bool reportUndelivered();
+    bool filterShipments();
 
     std::ostream& out_;
     InputReader input_;
