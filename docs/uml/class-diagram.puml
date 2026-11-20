@@ -251,7 +251,6 @@ PackageFactory ..> ExpressPackage : <<create>>
 PackageFactory ..> FragilePackage : <<create>>
 PackageFactory ..> LogisticsException : <<throw>>
 
-' === M11.2 starts here
 
 ' ---------------------------------------------------------------- History
 package "History" {
@@ -503,5 +502,128 @@ LogisticsManager ..> ModifyCommand : <<create>>
 LogisticsManager ..> AssignCommand : <<create>>
 LogisticsManager ..> PackageNotFoundException : <<throw>>
 LogisticsManager ..> AssigneeNotFoundException : <<throw>>
+
+
+' ---------------------------------------------------------------- Storage
+package "Storage" {
+    class CsvStorage {
+        + {static} kAssigneesFile : const char* = "assignees.csv"
+        + {static} kShipmentsFile : const char* = "shipments.csv"
+        + {static} kHistoryFile : const char* = "history.csv"
+        - directory_ : filesystem::path
+        + CsvStorage()
+        + CsvStorage(directory : filesystem::path)
+        + getDirectory() : const filesystem::path&
+        + save(manager : const LogisticsManager&)
+        + load() : unique_ptr<LogisticsManager>
+    }
+    note right of CsvStorage
+      Three CSV files (RFC 4180). save() writes *.tmp files
+      first, then renames them over the old ones. load()
+      builds a new manager: all or nothing.
+    end note
+    class CsvWriter {
+        - out_ : ostream&
+        - targetName_ : string
+        + CsvWriter(out : ostream&)
+        + CsvWriter(out : ostream&, targetName : string)
+        + getTargetName() : const string&
+        + writeRow(fields : const vector<string>&)
+    }
+    class CsvReader {
+        - in_ : istream&
+        - sourceName_ : string
+        - line_ : size_t = 1
+        - rowLine_ : size_t = 0
+        + CsvReader(in : istream&)
+        + CsvReader(in : istream&, sourceName : string)
+        + getSourceName() : const string&
+        + getRowLine() : size_t
+        + readRow() : optional<vector<string>>
+    }
+    CsvStorage ..> CsvWriter : <<use>>
+    CsvStorage ..> CsvReader : <<use>>
+}
+
+CsvStorage ..> LogisticsManager : saves / loads
+CsvStorage ..> StorageException : <<throw>>
+CsvWriter ..> StorageException : <<throw>>
+CsvReader ..> StorageException : <<throw>>
+
+' ---------------------------------------------------------------- Console (courier_console library)
+package "Console user interface (courier_console)" {
+    class ConsoleApp {
+        - out_ : ostream&
+        - input_ : InputReader
+        - storage_ : CsvStorage
+        - zone_ : const time_zone*
+        - dispatch_ : DispatchModule
+        - manager_ : unique_ptr<LogisticsManager>
+        - menu_ : vector<MenuItem>
+        - unsaved_ : bool = false
+        + ConsoleApp()
+        + ConsoleApp(in : istream&, out : ostream&, storage : CsvStorage)
+        + run() : int
+    }
+    note right of ConsoleApp
+      Menu 0..19 built from a table of MenuItem
+      {key, section, label, function<bool()> action}
+      whose actions are lambdas. Loads at start, saves
+      after every change, catches the exceptions of
+      each action (most specific first).
+      The 19 private action functions are not shown.
+    end note
+    class InputReader {
+        - in_ : istream&
+        - out_ : ostream&
+        + InputReader()
+        + InputReader(in : istream&, out : ostream&)
+        + readLine(prompt : string_view) : optional<string>
+        + atEnd() : bool
+        + askText(prompt) : optional<string>
+        + askText(prompt, current : string_view) : optional<string>
+        + askNumber(prompt) : optional<double>
+        + askNumber(prompt, current : double) : optional<double>
+        + askMoney(prompt) : optional<Money>
+        + askMoney(prompt, current : Money) : optional<Money>
+        + askTrackingId(prompt) : optional<TrackingId>
+        + askCode(prompt) : optional<string>
+        + askChoice(prompt, options : const vector<string_view>&) : optional<size_t>
+        + askYesNo(question : string_view) : bool
+    }
+    class InputParsing <<utility>> {
+        + trim(text : string_view) : string_view
+        + toUpper(text : string_view) : string
+        + parseInteger(text : string_view) : optional<int>
+        + parseNumber(text : string_view) : optional<double>
+        + parseMoney(text : string_view) : optional<Money>
+        + parseTrackingId(text : string_view) : optional<TrackingId>
+        + normalizeCode(text : string_view) : string
+    }
+    class ConsoleFormat <<utility>> {
+        + localTimeZone() : const time_zone*
+        + formatTime(time : sys_seconds, zone : const time_zone*) : string
+        + shorten(text : string_view, width : size_t) : string
+        + summaryHeader() : string
+        + formatSummary(package : const Package&) : string
+        + formatRecord(record : const OperationRecord&, zone : const time_zone*) : string
+    }
+
+    ConsoleApp "1" *-- "1" InputReader
+    ConsoleApp ..> InputParsing : <<use>>
+    ConsoleApp ..> ConsoleFormat : <<use>>
+    InputReader ..> InputParsing : <<use>>
+}
+
+ConsoleApp "1" *-- "1" LogisticsManager
+ConsoleApp "1" *-- "1" CsvStorage
+ConsoleApp "1" *-- "1" DispatchModule : attached to the manager
+ConsoleApp ..> LogisticsException : <<catch>>
+
+note as MainNote
+  main() creates a ConsoleApp, returns run()
+  and catches std::exception (unexpected errors).
+end note
+MainNote .. ConsoleApp
 
 @enduml
