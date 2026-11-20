@@ -251,4 +251,257 @@ PackageFactory ..> ExpressPackage : <<create>>
 PackageFactory ..> FragilePackage : <<create>>
 PackageFactory ..> LogisticsException : <<throw>>
 
+' === M11.2 starts here
+
+' ---------------------------------------------------------------- History
+package "History" {
+    enum OperationType {
+        Accept
+        StatusChange
+        Reroute
+        Modify
+        Assign
+        Undo
+        Redo
+    }
+    class OperationRecord {
+        - type_ : OperationType
+        - id_ : TrackingId
+        - details_ : string
+        - time_ : sys_seconds
+        + OperationRecord(type : OperationType, id : TrackingId, details : string)
+        + OperationRecord(type, id, details, time : sys_seconds)
+        + getType() : OperationType
+        + getId() : const TrackingId&
+        + getDetails() : const string&
+        + getTime() : sys_seconds
+    }
+    EnumNote .. OperationType
+}
+
+' ---------------------------------------------------------------- Observer pattern
+package "Observer pattern" {
+    interface StatusObserver {
+        # StatusObserver()
+        + ~StatusObserver() {virtual}
+        + {abstract} onStatusChanged(package : const Package&, previous : PackageStatus) noexcept
+    }
+    class DispatchModule <<final>> {
+        - out_ : ostream*
+        - alerts_ : vector<string>
+        + DispatchModule()
+        + DispatchModule(out : ostream&)
+        + onStatusChanged(package : const Package&, previous : PackageStatus) noexcept
+        + alerts() : const vector<string>&
+    }
+    StatusObserver <|.. DispatchModule
+    note bottom of DispatchModule
+      <b>Observer</b> (concrete observer): records and prints
+      an alert. LogisticsManager (the subject) notifies its
+      observers only for priority shipments, i.e. when
+      package.isPriority() is true (Express, Fragile).
+    end note
+}
+
+' ---------------------------------------------------------------- Command pattern
+package "Command pattern" {
+    abstract class ShipmentCommand {
+        - package_ : Package&
+        # ShipmentCommand(package : Package&)
+        + ~ShipmentCommand() {virtual}
+        + execute()
+        + undo()
+        + getId() : const TrackingId&
+        + {abstract} describe() : string
+        - {abstract} doExecute(package : Package&)
+        - {abstract} doUndo(package : Package&)
+    }
+    note left of ShipmentCommand
+      <b>Command</b>. Non-virtual interface: execute() and
+      undo() first refuse a delivered shipment, then call the
+      private virtual doExecute() / doUndo().
+    end note
+    class RerouteCommand <<final>> {
+        - previousDestination_ : string
+        - previousRecipient_ : string
+        - destination_ : string
+        - recipient_ : string
+        + RerouteCommand(package : Package&, destination : string)
+        + RerouteCommand(package : Package&, destination : string, recipient : string)
+        + describe() : string
+        - doExecute(package : Package&)
+        - doUndo(package : Package&)
+    }
+    class ModifyCommand <<final>> {
+        - previous_ : ParcelDetails
+        - details_ : ParcelDetails
+        + ModifyCommand(package : Package&, details : ParcelDetails)
+        + ModifyCommand(package : Package&, weightKg, dimensions, declaredValue)
+        + describe() : string
+        - doExecute(package : Package&)
+        - doUndo(package : Package&)
+    }
+    class AssignCommand <<final>> {
+        - previousCode_ : optional<string>
+        - code_ : optional<string>
+        + AssignCommand(package : Package&, assignee : const Assignee&)
+        + AssignCommand(package : Package&)
+        + describe() : string
+        - doExecute(package : Package&)
+        - doUndo(package : Package&)
+    }
+    class CommandHistory {
+        + {static} kDefaultLimit : size_t = 100
+        + {static} kMaxLimit : size_t = 10000
+        - limit_ : size_t
+        - undoStack_ : vector<unique_ptr<ShipmentCommand>>
+        - redoStack_ : vector<unique_ptr<ShipmentCommand>>
+        + CommandHistory()
+        + CommandHistory(limit : size_t)
+        + execute(command : unique_ptr<ShipmentCommand>)
+        + undo() : bool
+        + redo() : bool
+        + canUndo() : bool
+        + canRedo() : bool
+        + nextUndo() : const ShipmentCommand*
+        + nextRedo() : const ShipmentCommand*
+        + undoCount() : size_t
+        + redoCount() : size_t
+        + getLimit() : size_t
+    }
+    note bottom of CommandHistory
+      <b>Command</b> (invoker): runs a command and keeps it
+      for undo; a new command clears the redo stack; the
+      oldest command is dropped beyond the limit.
+    end note
+
+    ShipmentCommand <|-- RerouteCommand
+    ShipmentCommand <|-- ModifyCommand
+    ShipmentCommand <|-- AssignCommand
+    CommandHistory "1" *-- "0..*" ShipmentCommand : undo and redo stacks
+}
+
+ShipmentCommand "0..*" --> "1" Package : receiver
+ShipmentCommand ..> OperationNotAllowedException : <<throw>>
+ModifyCommand ..> ParcelDetails
+CommandHistory ..> ValidationException : <<throw>>
+
+' ---------------------------------------------------------------- Couriers and offices
+package "Couriers and offices" {
+    enum AssigneeKind {
+        Courier
+        Office
+    }
+    abstract class Assignee {
+        + {static} kMaxCodeLength : size_t = 10
+        - code_ : string
+        - name_ : string
+        # Assignee(code : string, name : string)
+        + ~Assignee() {virtual}
+        + getCode() : const string&
+        + getName() : const string&
+        + setName(name : string)
+        + {abstract} kind() : AssigneeKind
+        + describe() : string
+        - {abstract} contactDetails() : string
+    }
+    class Courier <<final>> {
+        - phone_ : string
+        + Courier(code : string, name : string)
+        + Courier(code : string, name : string, phone : string)
+        + getPhone() : const string&
+        + setPhone(phone : string)
+        + kind() : AssigneeKind
+        - contactDetails() : string
+    }
+    class Office <<final>> {
+        - address_ : string
+        + Office(code : string, name : string)
+        + Office(code : string, name : string, address : string)
+        + getAddress() : const string&
+        + setAddress(address : string)
+        + kind() : AssigneeKind
+        - contactDetails() : string
+    }
+    Assignee <|-- Courier
+    Assignee <|-- Office
+    EnumNote .. AssigneeKind
+}
+
+Package "0..*" --> "0..1" Assignee : assigned to\n(stored as the code)
+AssignCommand ..> Assignee
+
+' ---------------------------------------------------------------- Manager
+package "Manager" {
+    class LogisticsManager {
+        - factory_ : PackageFactory
+        - packages_ : unordered_map<TrackingId, unique_ptr<Package>>
+        - expressQueue_ : queue<TrackingId>
+        - regularQueue_ : queue<TrackingId>
+        - observers_ : vector<StatusObserver*>
+        - commands_ : CommandHistory
+        - assignees_ : unordered_map<string, unique_ptr<Assignee>>
+        - history_ : vector<OperationRecord>
+        + LogisticsManager()
+        + LogisticsManager(lastIssued : TrackingId)
+        .. shipments ..
+        + accept(type, weightKg, dimensions, recipient, destination, declaredValue) : const Package&
+        + accept(type, weightKg, dimensions, recipient, destination) : const Package&
+        + contains(id : const TrackingId&) : bool
+        + get(id : const TrackingId&) : const Package&
+        + packageCount() : size_t
+        + filter(predicate : const function<bool(const Package&)>&) : vector<const Package*>
+        + undelivered() : vector<const Package*>
+        .. delivery and observers ..
+        + attach(observer : StatusObserver&)
+        + detach(observer : StatusObserver&)
+        + observerCount() : size_t
+        + changeStatus(id : const TrackingId&, newStatus : PackageStatus)
+        + dispatchNext() : optional<TrackingId>
+        + waitingCount() : size_t
+        .. commands ..
+        + reroute(id : const TrackingId&, destination : string)
+        + reroute(id : const TrackingId&, destination : string, recipient : string)
+        + modify(id : const TrackingId&, details : const ParcelDetails&)
+        + assign(id : const TrackingId&, code : const string&)
+        + unassign(id : const TrackingId&)
+        + undo() : bool
+        + redo() : bool
+        + canUndo() : bool
+        + canRedo() : bool
+        .. couriers and offices ..
+        + addAssignee(assignee : unique_ptr<Assignee>) : const Assignee&
+        + hasAssignee(code : const string&) : bool
+        + getAssignee(code : const string&) : const Assignee&
+        + assigneeCount() : size_t
+        + assignees() : vector<const Assignee*>
+        + assignedTo(code : const string&) : vector<const Package*>
+        .. history and loading ..
+        + history() : const vector<OperationRecord>&
+        + cancelledOperations() : vector<OperationRecord>
+        + restore(type, id, parcel, recipient, destination, status, assigneeCode) : const Package&
+        + restoreRecord(record : OperationRecord)
+    }
+    note top of LogisticsManager
+      Not copyable or movable (observers and commands hold
+      references into it). <b>Observer</b> subject: changeStatus()
+      notifies the attached observers for priority shipments.
+      Delivery queues: express first, then regular (FIFO).
+      Every change is written to history_; undone ones form
+      the history of cancelled operations.
+    end note
+}
+
+LogisticsManager "1" *-- "1" PackageFactory
+LogisticsManager "1" *-- "0..*" Package : packages_\nkey: TrackingId
+LogisticsManager "1" *-- "1" CommandHistory
+LogisticsManager "1" *-- "0..*" Assignee : assignees_\nkey: code
+LogisticsManager "1" *-- "0..*" OperationRecord : history_
+LogisticsManager "1" --> "0..*" StatusObserver : notifies (not owned)
+LogisticsManager ..> RerouteCommand : <<create>>
+LogisticsManager ..> ModifyCommand : <<create>>
+LogisticsManager ..> AssignCommand : <<create>>
+LogisticsManager ..> PackageNotFoundException : <<throw>>
+LogisticsManager ..> AssigneeNotFoundException : <<throw>>
+
 @enduml
