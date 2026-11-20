@@ -69,7 +69,8 @@ target_link_libraries(courier_core PRIVATE project_warnings)
 # The console user interface, kept apart from the logic so the core does not depend on it.
 add_library(courier_console STATIC
     src/InputParsing.cpp
-    src/InputReader.cpp)
+    src/InputReader.cpp
+    src/ConsoleFormat.cpp)
 
 target_link_libraries(courier_console PUBLIC courier_core PRIVATE project_warnings)
 
