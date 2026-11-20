@@ -53,6 +53,7 @@ add_library(courier_core STATIC
     src/OperationType.cpp
     src/OperationRecord.cpp
     src/CsvWriter.cpp
+    src/CsvReader.cpp
     src/AssigneeKind.cpp
     src/Assignee.cpp
     src/Courier.cpp
