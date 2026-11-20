@@ -60,7 +60,8 @@ add_library(courier_core STATIC
     src/Office.cpp
     src/StatusObserver.cpp
     src/LogisticsManager.cpp
-    src/DispatchModule.cpp)
+    src/DispatchModule.cpp
+    src/CsvStorage.cpp)
 
 target_include_directories(courier_core PUBLIC include)
 target_link_libraries(courier_core PRIVATE project_warnings)
