@@ -36,6 +36,11 @@ constexpr std::array kServiceTypes{ServiceType::Standard, ServiceType::Express,
 constexpr std::array kStatuses{PackageStatus::Accepted, PackageStatus::InTransit,
                                PackageStatus::Delivered};
 
+// The filters of filterShipments(), in the order they are offered.
+enum class FilterKind { Service, Status, Destination, MinimumCost };
+constexpr std::array kFilterKinds{FilterKind::Service, FilterKind::Status, FilterKind::Destination,
+                                  FilterKind::MinimumCost};
+
 // The display names of the values, in the same order, for InputReader::askChoice.
 template <typename Enum, std::size_t N>
 std::vector<std::string_view> namesOf(const std::array<Enum, N>& values) {
@@ -332,29 +337,29 @@ bool ConsoleApp::reportUndelivered() {
 }
 
 bool ConsoleApp::filterShipments() {
-    const auto kind = input_.askChoice(
+    const auto choice = input_.askChoice(
         "Filter",
         {"By service", "By status", "By destination (contains text)", "By total cost (at least)"});
-    if (!kind) {
+    if (!choice) {
         return false;
     }
     LogisticsManager::PackagePredicate predicate;
-    switch (*kind) {
-        case 0:
+    switch (kFilterKinds.at(*choice)) {
+        case FilterKind::Service:
             if (const auto type = askServiceType()) {
                 predicate = [type = *type](const Package& package) {
                     return package.serviceType() == type;
                 };
             }
             break;
-        case 1:
+        case FilterKind::Status:
             if (const auto status = askStatus("Status")) {
                 predicate = [status = *status](const Package& package) {
                     return package.getStatus() == status;
                 };
             }
             break;
-        case 2:
+        case FilterKind::Destination:
             if (const auto text = input_.askText("Destination contains")) {
                 // Upper-cased on both sides, so the letter case does not matter.
                 predicate = [part = toUpper(*text)](const Package& package) {
@@ -362,7 +367,7 @@ bool ConsoleApp::filterShipments() {
                 };
             }
             break;
-        case 3:
+        case FilterKind::MinimumCost:
             if (const auto minimum = input_.askMoney("Total cost at least")) {
                 predicate = [minimum = *minimum](const Package& package) {
                     return package.totalCost() >= minimum;
