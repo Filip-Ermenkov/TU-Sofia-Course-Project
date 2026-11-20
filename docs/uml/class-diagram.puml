@@ -1,0 +1,254 @@
+@startuml class-diagram
+' Class diagram of the courier shipment system.
+' Notation: + public, - private, # protected; {abstract} pure virtual; {static} class constant.
+' Types are written without std::. Private helper functions are left out.
+' Long parameter lists show names only; the types are in the attributes and the headers.
+' Dependencies (dashed) show the main create/use/throw links, not every #include.
+
+title Courier Shipment Management System: class diagram
+
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam shadowing false
+hide empty members
+' ELK, the layout engine bundled with PlantUML: top-down layers, no Graphviz needed.
+!pragma layout elk
+set namespaceSeparator none
+
+' ---------------------------------------------------------------- Exceptions
+package "Exceptions" {
+    class "std::runtime_error" as runtime_error <<standard library>>
+
+    class LogisticsException {
+        + LogisticsException(message : const string&)
+        + LogisticsException(message : const char*)
+    }
+    class ValidationException {
+        + ValidationException(message : const string&)
+        + ValidationException(field : const string&, value : double)
+    }
+    class InvalidStatusChangeException {
+        + InvalidStatusChangeException(message : const string&)
+        + InvalidStatusChangeException(id, from : PackageStatus, to : PackageStatus)
+    }
+    class PackageNotFoundException {
+        + PackageNotFoundException(message : const string&)
+        + PackageNotFoundException(id : const TrackingId&)
+    }
+    class OperationNotAllowedException {
+        + OperationNotAllowedException(message : const string&)
+        + OperationNotAllowedException(id : const TrackingId&, status : PackageStatus)
+    }
+    class AssigneeNotFoundException {
+        + AssigneeNotFoundException(message : const string&)
+        + AssigneeNotFoundException(message : const char*)
+    }
+    class StorageException {
+        + StorageException(message : const string&)
+        + StorageException(source : const string&, line : size_t, reason : const string&)
+    }
+
+    runtime_error <|-- LogisticsException
+    LogisticsException <|-- ValidationException
+    LogisticsException <|-- InvalidStatusChangeException
+    LogisticsException <|-- PackageNotFoundException
+    LogisticsException <|-- OperationNotAllowedException
+    LogisticsException <|-- AssigneeNotFoundException
+    LogisticsException <|-- StorageException
+}
+
+' ---------------------------------------------------------------- Value types
+package "Value types" {
+    class TrackingId {
+        + {static} kMaxNumber : uint32_t = 99999999
+        - number_ : uint32_t
+        + TrackingId(number : uint32_t)
+        + TrackingId(text : string_view)
+        + getNumber() : uint32_t
+        + getValue() : string
+        + operator==(other : const TrackingId&) : bool
+    }
+    class "std::hash<TrackingId>" as TrackingIdHash <<specialization>> {
+        + operator()(id : const TrackingId&) : size_t
+    }
+    class Money {
+        - cents_ : int64_t
+        + Money()
+        + Money(cents : int64_t)
+        + getCents() : int64_t
+        + toString() : string
+        + multipliedBy(factor : double) : Money
+        + operator+(other : const Money&) : Money
+        + operator<=>(other : const Money&)
+    }
+    class Dimensions {
+        + {static} kMaxSideCm : double = 500.0
+        - length_ : double
+        - width_ : double
+        - height_ : double
+        + Dimensions(length : double, width : double, height : double)
+        + Dimensions(side : double)
+        + getLength() : double
+        + getWidth() : double
+        + getHeight() : double
+        + setLength(length : double)
+        + setWidth(width : double)
+        + setHeight(height : double)
+        + volume() : double
+    }
+    class ParcelDetails {
+        - weightKg_ : double
+        - dimensions_ : Dimensions
+        - declaredValue_ : Money
+        + ParcelDetails(weightKg : double, dimensions : Dimensions, declaredValue : Money)
+        + ParcelDetails(weightKg : double, dimensions : Dimensions)
+        + ParcelDetails(package : const Package&)
+        + getWeightKg() : double
+        + getDimensions() : const Dimensions&
+        + getDeclaredValue() : Money
+    }
+    enum ServiceType {
+        Standard
+        Express
+        Fragile
+    }
+    enum PackageStatus {
+        Accepted
+        InTransit
+        Delivered
+    }
+    note "Each enum has the free functions\ntoString(value) : string_view and\nparse...(text) : optional<enum>.\nPackageStatus also has\ncanTransition(from, to) : bool\n(one step forward at a time)." as EnumNote
+    EnumNote .. ServiceType
+    EnumNote .. PackageStatus
+
+    TrackingIdHash ..> TrackingId : hashes
+}
+
+' ---------------------------------------------------------------- Validation
+class Validation <<utility>> {
+    + requireInRange(field : const string&, value : double, max : double) : double
+    + requireNotBlank(field : const string&, text : string) : string
+    + requireCode(code : string) : string
+    + requireWeight(weightKg : double) : double
+    + requireDeclaredValue(value : Money) : Money
+}
+note bottom of Validation
+  Internal (src/Validation.hpp). Used by Dimensions, Package,
+  ParcelDetails, Assignee, Courier, Office, RerouteCommand
+  and OperationRecord to check values before storing them.
+end note
+Validation ..> ValidationException : <<throw>>
+
+' ---------------------------------------------------------------- Shipments
+package "Shipments" {
+    abstract class Package {
+        + {static} kVolumetricDivisor : double = 5000.0
+        + {static} kInsuranceRate : double = 0.01
+        + {static} kMaxWeightKg : double = 1000.0
+        + {static} kMaxDeclaredValue : Money = 1000000.00
+        - id_ : TrackingId
+        - weightKg_ : double
+        - dimensions_ : Dimensions
+        - recipient_ : string
+        - destination_ : string
+        - declaredValue_ : Money
+        - status_ : PackageStatus = Accepted
+        - assigneeCode_ : optional<string>
+        # Package(id, weightKg, dimensions, recipient, destination, declaredValue)
+        # Package(id, weightKg, dimensions, recipient, destination)
+        + ~Package() {virtual}
+        + getId() : const TrackingId&
+        + getWeightKg() : double
+        + getDimensions() : const Dimensions&
+        + getDeclaredValue() : Money
+        + getRecipient() : const string&
+        + getDestination() : const string&
+        + getStatus() : PackageStatus
+        + getAssigneeCode() : const optional<string>&
+        + setWeightKg(weightKg : double)
+        + setDimensions(dimensions : const Dimensions&)
+        + setDeclaredValue(declaredValue : Money)
+        + setRecipient(recipient : string)
+        + setDestination(destination : string)
+        + setStatus(status : PackageStatus)
+        + setAssigneeCode(code : optional<string>)
+        + chargeableWeightKg() : double
+        + {abstract} serviceType() : ServiceType
+        + isPriority() : bool {virtual}
+        + {abstract} deliveryFee() : Money
+        + insuranceFee() : Money {virtual}
+        + totalCost() : Money
+        # weightBasedFee(baseFee : Money, perKg : Money) : Money
+    }
+    note right of Package
+      totalCost() = deliveryFee() + insuranceFee()
+      (template of the calculation; the subclasses
+      supply the fee). Chargeable weight = max(weight,
+      volume / kVolumetricDivisor).
+      operator<<(ostream&, const Package&) prints the waybill
+      (Money and Assignee have an operator<< too).
+    end note
+
+    class StandardPackage <<final>> {
+        + {static} kBaseFee : Money = 5.00
+        + {static} kPerKg : Money = 1.50
+        + StandardPackage(id, weightKg, dimensions, recipient, destination, declaredValue)
+        + StandardPackage(id, weightKg, dimensions, recipient, destination)
+        + serviceType() : ServiceType
+        + deliveryFee() : Money
+    }
+    class ExpressPackage <<final>> {
+        + {static} kBaseFee : Money = 8.00
+        + {static} kPerKg : Money = 2.50
+        + ExpressPackage(id, weightKg, dimensions, recipient, destination, declaredValue)
+        + ExpressPackage(id, weightKg, dimensions, recipient, destination)
+        + serviceType() : ServiceType
+        + isPriority() : bool
+        + deliveryFee() : Money
+    }
+    class FragilePackage <<final>> {
+        + {static} kBaseFee : Money = 5.00
+        + {static} kPerKg : Money = 1.50
+        + {static} kHandlingFee : Money = 4.00
+        + {static} kFragileInsuranceRate : double = 0.02
+        + FragilePackage(id, weightKg, dimensions, recipient, destination, declaredValue)
+        + FragilePackage(id, weightKg, dimensions, recipient, destination)
+        + serviceType() : ServiceType
+        + isPriority() : bool
+        + deliveryFee() : Money
+        + insuranceFee() : Money
+    }
+
+    Package <|-- StandardPackage
+    Package <|-- ExpressPackage
+    Package <|-- FragilePackage
+}
+
+Package ..> InvalidStatusChangeException : <<throw>>
+ParcelDetails ..> Package : snapshot of
+
+' ---------------------------------------------------------------- Factory pattern
+package "Factory pattern" {
+    class PackageFactory {
+        - lastIssued_ : optional<TrackingId>
+        + PackageFactory()
+        + PackageFactory(lastIssued : TrackingId)
+        + create(type, weightKg, dimensions, recipient, destination, declaredValue) : unique_ptr<Package>
+        + create(type, weightKg, dimensions, recipient, destination) : unique_ptr<Package>
+        + restore(type, id, weightKg, dimensions, recipient, destination, declaredValue) : unique_ptr<Package>
+        + getLastIssued() : optional<TrackingId>
+    }
+    note right of PackageFactory
+      <b>Factory</b>: the only place that knows the
+      concrete classes. Chooses the class by
+      ServiceType, issues the next unique TrackingId
+      and returns the object as unique_ptr<Package>.
+    end note
+}
+
+PackageFactory ..> StandardPackage : <<create>>
+PackageFactory ..> ExpressPackage : <<create>>
+PackageFactory ..> FragilePackage : <<create>>
+PackageFactory ..> LogisticsException : <<throw>>
+
+@enduml
