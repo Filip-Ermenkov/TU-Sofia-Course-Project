@@ -41,12 +41,38 @@ namespace {
 
 namespace fs = std::filesystem;
 
-constexpr std::array<std::string_view, 4> kAssigneesHeader{"kind", "code", "name", "contact"};
-constexpr std::array<std::string_view, 11> kShipmentsHeader{
+// Column positions, in header order, so a record is read as row[shipments::Weight] and not row[3].
+namespace assignees {
+enum Column : std::size_t { Kind, Code, Name, Contact, ColumnCount };
+}
+namespace shipments {
+enum Column : std::size_t {
+    Id,
+    Service,
+    Status,
+    Weight,
+    Length,
+    Width,
+    Height,
+    DeclaredValue,
+    Recipient,
+    Destination,
+    AssigneeCode,
+    ColumnCount
+};
+}
+namespace history {
+enum Column : std::size_t { Time, Type, Id, Details, ColumnCount };
+}
+
+constexpr std::array<std::string_view, assignees::ColumnCount> kAssigneesHeader{"kind", "code",
+                                                                                "name", "contact"};
+constexpr std::array<std::string_view, shipments::ColumnCount> kShipmentsHeader{
     "id",        "service",     "status",    "weight_kg",
     "length_cm", "width_cm",    "height_cm", "declared_value_cents",
     "recipient", "destination", "assignee"};
-constexpr std::array<std::string_view, 4> kHistoryHeader{"time", "type", "id", "details"};
+constexpr std::array<std::string_view, history::ColumnCount> kHistoryHeader{"time", "type", "id",
+                                                                            "details"};
 
 void writeHeader(CsvWriter& writer, std::span<const std::string_view> header) {
     writer.writeRow(std::vector<std::string>(header.begin(), header.end()));
@@ -145,42 +171,49 @@ Enum toEnum(std::optional<Enum> parsed, const std::string& field, std::string_vi
 using Row = std::vector<std::string>;
 
 void readAssignee(const Row& row, LogisticsManager& manager) {
-    const std::string& code = row[1];
-    const std::string& name = row[2];
-    const std::string& contact = row[3];
-    std::unique_ptr<Assignee> assignee;
-    switch (toEnum(parseAssigneeKind(row[0]), row[0], "kind")) {
+    using namespace assignees;  // Kind, Code, ...
+    const std::string& code = row[Code];
+    const std::string& name = row[Name];
+    const std::string& contact = row[Contact];
+    std::unique_ptr<Assignee> created;
+    switch (toEnum(parseAssigneeKind(row[Kind]), row[Kind], kAssigneesHeader[Kind])) {
         case AssigneeKind::Courier:
-            assignee = contact.empty() ? std::make_unique<Courier>(code, name)
-                                       : std::make_unique<Courier>(code, name, contact);
+            created = contact.empty() ? std::make_unique<Courier>(code, name)
+                                      : std::make_unique<Courier>(code, name, contact);
             break;
         case AssigneeKind::Office:
-            assignee = contact.empty() ? std::make_unique<Office>(code, name)
-                                       : std::make_unique<Office>(code, name, contact);
+            created = contact.empty() ? std::make_unique<Office>(code, name)
+                                      : std::make_unique<Office>(code, name, contact);
             break;
     }
-    manager.addAssignee(std::move(assignee));
+    manager.addAssignee(std::move(created));
 }
 
 void readShipment(const Row& row, LogisticsManager& manager) {
+    using namespace shipments;
+    const auto number = [&row](Column column) {
+        return toDouble(row[column], kShipmentsHeader[column]);
+    };
     const ParcelDetails parcel(
-        toDouble(row[3], "weight_kg"),
-        Dimensions(toDouble(row[4], "length_cm"), toDouble(row[5], "width_cm"),
-                   toDouble(row[6], "height_cm")),
-        Money(toInteger(row[7], "declared_value_cents")));
-    std::optional<std::string> assignee;
-    if (!row[10].empty()) {
-        assignee = row[10];
+        number(Weight), Dimensions(number(Length), number(Width), number(Height)),
+        Money(toInteger(row[DeclaredValue], kShipmentsHeader[DeclaredValue])));
+    std::optional<std::string> assigneeCode;
+    if (!row[AssigneeCode].empty()) {
+        assigneeCode = row[AssigneeCode];
     }
-    manager.restore(toEnum(parseServiceType(row[1]), row[1], "service"), TrackingId(row[0]), parcel,
-                    row[8], row[9], toEnum(parsePackageStatus(row[2]), row[2], "status"),
-                    std::move(assignee));
+    manager.restore(toEnum(parseServiceType(row[Service]), row[Service], kShipmentsHeader[Service]),
+                    TrackingId(row[Id]), parcel, row[Recipient], row[Destination],
+                    toEnum(parsePackageStatus(row[Status]), row[Status], kShipmentsHeader[Status]),
+                    std::move(assigneeCode));
 }
 
 void readRecord(const Row& row, LogisticsManager& manager) {
-    const std::chrono::sys_seconds time{std::chrono::seconds{toInteger(row[0], "time")}};
-    manager.restoreRecord(OperationRecord(toEnum(parseOperationType(row[1]), row[1], "type"),
-                                          TrackingId(row[2]), row[3], time));
+    using namespace history;
+    const std::chrono::sys_seconds time{
+        std::chrono::seconds{toInteger(row[Time], kHistoryHeader[Time])}};
+    manager.restoreRecord(
+        OperationRecord(toEnum(parseOperationType(row[Type]), row[Type], kHistoryHeader[Type]),
+                        TrackingId(row[Id]), row[Details], time));
 }
 
 // Checks the header, then hands every record to readRow. Any error inside a record becomes a
