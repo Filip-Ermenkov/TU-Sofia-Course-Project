@@ -19,6 +19,7 @@
 #include "courier/Money.hpp"
 #include "courier/OperationNotAllowedException.hpp"
 #include "courier/PackageNotFoundException.hpp"
+#include "courier/ParcelDetails.hpp"
 #include "courier/StorageException.hpp"
 #include "courier/ValidationException.hpp"
 
@@ -40,6 +41,15 @@ std::vector<std::string_view> namesOf(const std::array<Enum, N>& values) {
         names.push_back(toString(value));
     }
     return names;
+}
+
+// Exact comparison is right here: a value the user kept by pressing Enter is the same double.
+bool sameDetails(const Package& package, const ParcelDetails& details) {
+    const Dimensions& a = package.getDimensions();
+    const Dimensions& b = details.getDimensions();
+    return package.getWeightKg() == details.getWeightKg() && a.getLength() == b.getLength() &&
+           a.getWidth() == b.getWidth() && a.getHeight() == b.getHeight() &&
+           package.getDeclaredValue() == details.getDeclaredValue();
 }
 
 }  // namespace
@@ -65,6 +75,11 @@ std::vector<ConsoleApp::MenuItem> ConsoleApp::buildMenu() {
         {7, "Delivery", "Change the status of a shipment", [this] { return changeStatus(); }},
         {8, "Delivery", "Show the dispatch alerts of this session",
          [this] { return showDispatchAlerts(); }},
+        {9, "Changes (can be undone)", "Reroute a shipment", [this] { return rerouteShipment(); }},
+        {10, "Changes (can be undone)", "Modify a shipment's weight, size or declared value",
+         [this] { return modifyShipment(); }},
+        {13, "Changes (can be undone)", "Undo the last change", [this] { return undo(); }},
+        {14, "Changes (can be undone)", "Redo the last undone change", [this] { return redo(); }},
     };
 }
 
@@ -372,6 +387,97 @@ bool ConsoleApp::showDispatchAlerts() {
         out_ << "  " << alert << '\n';
     }
     return false;
+}
+
+bool ConsoleApp::rerouteShipment() {
+    const auto id = input_.askTrackingId("Tracking ID");
+    if (!id) {
+        return false;
+    }
+    const Package& package = manager_->get(*id);
+    out_ << "Press Enter to keep a value as it is.\n";
+    auto destination = input_.askText("Destination", package.getDestination());
+    if (!destination) {
+        return false;
+    }
+    auto recipient = input_.askText("Recipient", package.getRecipient());
+    if (!recipient) {
+        return false;
+    }
+    const bool newRecipient = *recipient != package.getRecipient();
+    if (*destination == package.getDestination() && !newRecipient) {
+        out_ << "Nothing changed.\n";
+        return false;
+    }
+    if (newRecipient) {
+        manager_->reroute(*id, std::move(*destination), std::move(*recipient));
+    } else {
+        manager_->reroute(*id, std::move(*destination));
+    }
+    out_ << "Done: " << manager_->history().back().getDetails() << '\n';
+    return true;
+}
+
+bool ConsoleApp::modifyShipment() {
+    const auto id = input_.askTrackingId("Tracking ID");
+    if (!id) {
+        return false;
+    }
+    const Package& package = manager_->get(*id);
+    const Dimensions& size = package.getDimensions();
+    out_ << "Press Enter to keep a value as it is.\n";
+    const auto weight = input_.askNumber(
+        std::format("Weight in kg (up to {})", Package::kMaxWeightKg), package.getWeightKg());
+    if (!weight) {
+        return false;
+    }
+    const std::string sidePrompt = std::format("in cm (up to {})", Dimensions::kMaxSideCm);
+    const auto length = input_.askNumber("Length " + sidePrompt, size.getLength());
+    if (!length) {
+        return false;
+    }
+    const auto width = input_.askNumber("Width " + sidePrompt, size.getWidth());
+    if (!width) {
+        return false;
+    }
+    const auto height = input_.askNumber("Height " + sidePrompt, size.getHeight());
+    if (!height) {
+        return false;
+    }
+    const auto declaredValue = input_.askMoney(
+        std::format("Declared value (up to {})", Package::kMaxDeclaredValue.toString()),
+        package.getDeclaredValue());
+    if (!declaredValue) {
+        return false;
+    }
+    // Checks all the new values before anything is changed.
+    const ParcelDetails details(*weight, Dimensions(*length, *width, *height), *declaredValue);
+    if (sameDetails(package, details)) {
+        out_ << "Nothing changed.\n";
+        return false;
+    }
+    manager_->modify(*id, details);
+    out_ << "Done: " << manager_->history().back().getDetails() << '\n'
+         << std::format("New total: {}\n", package.totalCost().toString());
+    return true;
+}
+
+bool ConsoleApp::undo() {
+    if (!manager_->undo()) {
+        out_ << "Nothing to undo.\n";
+        return false;
+    }
+    out_ << "Undone: " << manager_->history().back().getDetails() << '\n';
+    return true;
+}
+
+bool ConsoleApp::redo() {
+    if (!manager_->redo()) {
+        out_ << "Nothing to redo.\n";
+        return false;
+    }
+    out_ << "Redone: " << manager_->history().back().getDetails() << '\n';
+    return true;
 }
 
 }  // namespace courier

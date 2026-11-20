@@ -72,6 +72,10 @@ private:
     bool dispatchNext();
     bool changeStatus();
     bool showDispatchAlerts();
+    bool rerouteShipment();
+    bool modifyShipment();
+    bool undo();
+    bool redo();
 
     std::ostream& out_;
     InputReader input_;

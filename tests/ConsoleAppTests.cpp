@@ -300,3 +300,69 @@ TEST_CASE("ConsoleApp shows no dispatch alerts before any status change") {
     const TempDir dir;
     REQUIRE(contains(runSession(dir.path(), "8\n0\n").shown, "  (none)\n"));
 }
+
+TEST_CASE("ConsoleApp reroutes a shipment, keeping what the user does not change") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result = runSession(dir.path(), "9\nCR00000001\nPlovdiv\n\n0\n");
+    REQUIRE(contains(result.shown, "Destination [Sofia]: Recipient [Ivan Petrov]: "));
+    REQUIRE(contains(result.shown, "Done: Reroute CR00000001: Sofia -> Plovdiv\n"));
+    const auto saved = CsvStorage(dir.path()).load();
+    REQUIRE(saved->get(courier::TrackingId(1)).getDestination() == "Plovdiv");
+    REQUIRE(saved->get(courier::TrackingId(1)).getRecipient() == "Ivan Petrov");
+}
+
+TEST_CASE("ConsoleApp changes the recipient when rerouting") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result = runSession(dir.path(), "9\nCR00000001\n\nGeorgi Dimitrov\n0\n");
+    REQUIRE(contains(result.shown, "; recipient Ivan Petrov -> Georgi Dimitrov\n"));
+}
+
+TEST_CASE("ConsoleApp skips a reroute or modify that changes nothing") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result =
+        runSession(dir.path(), "9\nCR00000001\n\n\n10\nCR00000001\n\n\n\n\n\n13\n0\n");
+    const std::string& shown = result.shown;
+    const auto first = shown.find("Nothing changed.\n");
+    REQUIRE(first != std::string::npos);
+    REQUIRE(shown.find("Nothing changed.\n", first + 1) != std::string::npos);
+    REQUIRE(contains(shown, "Nothing to undo.\n"));
+    REQUIRE(CsvStorage(dir.path()).load()->history().size() == 2);
+}
+
+TEST_CASE("ConsoleApp modifies a shipment and shows the new total") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result = runSession(dir.path(), "10\nCR00000001\n4\n\n\n\n100\n0\n");
+    REQUIRE(contains(result.shown, "Weight in kg (up to 1000) [2]: "));
+    REQUIRE(contains(result.shown, "Length in cm (up to 500) [30]: "));
+    REQUIRE(contains(result.shown, "Declared value (up to 1000000.00) [0.00]: "));
+    REQUIRE(contains(result.shown,
+                     "Done: Modify CR00000001: weight 2.00 -> 4.00 kg; declared value 0.00 -> "
+                     "100.00\n"));
+    REQUIRE(contains(result.shown, "New total: 12.00\n"));
+}
+
+TEST_CASE("ConsoleApp undoes and redoes changes") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result = runSession(dir.path(), "9\nCR00000001\nPlovdiv\n\n13\n14\n14\n13\n0\n");
+    REQUIRE(contains(result.shown, "Undone: Reroute CR00000001: Sofia -> Plovdiv\n"));
+    REQUIRE(contains(result.shown, "Redone: Reroute CR00000001: Sofia -> Plovdiv\n"));
+    REQUIRE(contains(result.shown, "Nothing to redo.\n"));
+    const auto saved = CsvStorage(dir.path()).load();
+    REQUIRE(saved->get(courier::TrackingId(1)).getDestination() == "Sofia");
+    REQUIRE(saved->cancelledOperations().size() == 2);
+}
+
+TEST_CASE("ConsoleApp refuses to change a delivered shipment") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result =
+        runSession(dir.path(), "7\nCR00000002\n2\n7\nCR00000002\n3\n9\nCR00000002\nBurgas\n\n0\n");
+    REQUIRE(
+        contains(result.shown,
+                 "Not allowed: Shipment CR00000002 is Delivered and can no longer be changed\n"));
+}
