@@ -1,0 +1,6 @@
+@startuml overview
+' Overview: the same diagram without the class members, so the relationships fit on one page.
+!include class-diagram.puml
+title Courier Shipment Management System: overview (members hidden)
+hide members
+@enduml
