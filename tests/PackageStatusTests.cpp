@@ -5,12 +5,25 @@
 
 using courier::canTransition;
 using courier::PackageStatus;
+using courier::parsePackageStatus;
 using courier::toString;
 
 TEST_CASE("PackageStatus converts to its name") {
     REQUIRE(toString(PackageStatus::Accepted) == "Accepted");
     REQUIRE(toString(PackageStatus::InTransit) == "In transit");
     REQUIRE(toString(PackageStatus::Delivered) == "Delivered");
+}
+
+TEST_CASE("PackageStatus is read back from its name") {
+    REQUIRE(parsePackageStatus("Accepted") == PackageStatus::Accepted);
+    REQUIRE(parsePackageStatus("In transit") == PackageStatus::InTransit);
+    REQUIRE(parsePackageStatus("Delivered") == PackageStatus::Delivered);
+}
+
+TEST_CASE("PackageStatus parsing rejects any other text") {
+    REQUIRE_FALSE(parsePackageStatus("").has_value());
+    REQUIRE_FALSE(parsePackageStatus("InTransit").has_value());
+    REQUIRE_FALSE(parsePackageStatus(" Accepted").has_value());
 }
 
 TEST_CASE("PackageStatus moves forward one step at a time") {

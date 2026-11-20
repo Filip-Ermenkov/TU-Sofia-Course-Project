@@ -8,6 +8,7 @@
 
 using courier::OperationRecord;
 using courier::OperationType;
+using courier::parseOperationType;
 using courier::TrackingId;
 using courier::ValidationException;
 
@@ -20,6 +21,22 @@ TEST_CASE("OperationType converts to its name") {
     REQUIRE(toString(OperationType::Undo) == "Undo");
     REQUIRE(toString(OperationType::Redo) == "Redo");
     REQUIRE_THROWS_AS(toString(static_cast<OperationType>(99)), std::logic_error);
+}
+
+TEST_CASE("OperationType is read back from its name") {
+    REQUIRE(parseOperationType("Accept") == OperationType::Accept);
+    REQUIRE(parseOperationType("Status change") == OperationType::StatusChange);
+    REQUIRE(parseOperationType("Reroute") == OperationType::Reroute);
+    REQUIRE(parseOperationType("Modify") == OperationType::Modify);
+    REQUIRE(parseOperationType("Assign") == OperationType::Assign);
+    REQUIRE(parseOperationType("Undo") == OperationType::Undo);
+    REQUIRE(parseOperationType("Redo") == OperationType::Redo);
+}
+
+TEST_CASE("OperationType parsing rejects any other text") {
+    REQUIRE_FALSE(parseOperationType("").has_value());
+    REQUIRE_FALSE(parseOperationType("StatusChange").has_value());
+    REQUIRE_FALSE(parseOperationType(" Accept").has_value());
 }
 
 TEST_CASE("OperationRecord stores the values it was created with") {

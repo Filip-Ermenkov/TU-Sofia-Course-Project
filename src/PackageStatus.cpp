@@ -1,5 +1,6 @@
 #include "courier/PackageStatus.hpp"
 
+#include <initializer_list>
 #include <stdexcept>
 
 namespace courier {
@@ -26,6 +27,17 @@ bool canTransition(PackageStatus from, PackageStatus to) {
             return false;
     }
     throw std::logic_error("Unknown PackageStatus");
+}
+
+std::optional<PackageStatus> parsePackageStatus(std::string_view text) {
+    // Compares with toString(), so each name is written in one place only.
+    for (const PackageStatus status :
+         {PackageStatus::Accepted, PackageStatus::InTransit, PackageStatus::Delivered}) {
+        if (toString(status) == text) {
+            return status;
+        }
+    }
+    return std::nullopt;
 }
 
 }  // namespace courier
