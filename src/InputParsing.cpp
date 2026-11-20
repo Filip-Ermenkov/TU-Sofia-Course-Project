@@ -81,13 +81,13 @@ std::optional<Money> parseMoney(std::string_view text) {
     if (!units || *units > kMaxWhole) {
         return std::nullopt;
     }
-    std::int64_t cents = 0;
-    if (!decimals.empty()) {
-        cents = *parseWhole<std::int64_t>(decimals);
-        if (decimals.size() == 1) {
-            cents *= 10;  // "12.5" means 12.50
-        }
+    const std::optional<std::int64_t> fraction =
+        decimals.empty() ? 0 : parseWhole<std::int64_t>(decimals);
+    if (!fraction) {
+        return std::nullopt;
     }
+    // "12.5" means 12.50.
+    const std::int64_t cents = decimals.size() == 1 ? *fraction * 10 : *fraction;
     return Money(*units * 100 + cents);
 }
 
