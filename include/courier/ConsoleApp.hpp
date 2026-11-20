@@ -14,6 +14,7 @@
 #include "courier/DispatchModule.hpp"
 #include "courier/InputReader.hpp"
 #include "courier/LogisticsManager.hpp"
+#include "courier/OperationRecord.hpp"
 #include "courier/Package.hpp"
 #include "courier/PackageStatus.hpp"
 #include "courier/ServiceType.hpp"
@@ -62,6 +63,7 @@ private:
     [[nodiscard]] int finish() const;
 
     void printPackages(const std::vector<const Package*>& packages) const;
+    void printRecords(const std::vector<OperationRecord>& records) const;
     [[nodiscard]] std::optional<ServiceType> askServiceType();
     [[nodiscard]] std::optional<PackageStatus> askStatus(std::string_view prompt);
     // Code and name of a new courier or office, then `contactPrompt` (may be left empty).
@@ -89,6 +91,8 @@ private:
     bool registerCourier();
     bool registerOffice();
     bool listAssignees();
+    bool showHistory();
+    bool showCancelledOperations();
 
     std::ostream& out_;
     InputReader input_;

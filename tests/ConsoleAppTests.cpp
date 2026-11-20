@@ -91,7 +91,9 @@ TEST_CASE("ConsoleApp starts empty on the first run and exits on 0") {
     REQUIRE(
         contains(result.shown,
                  "Shipments\n   1  Accept a new shipment\n   2  Find a shipment by tracking ID\n"));
-    REQUIRE(contains(result.shown, "   0  Exit\n"));
+    REQUIRE(contains(result.shown,
+                     "History\n  18  Logistics history\n  19  Cancelled (undone) "
+                     "operations\n   0  Exit\n"));
     REQUIRE(result.shown.ends_with("Goodbye.\n"));
     // Nothing changed, so nothing was written.
     REQUIRE_FALSE(fs::exists(dir.path() / "data"));
@@ -417,4 +419,32 @@ TEST_CASE("ConsoleApp unassigns a shipment and skips one that is not assigned") 
     REQUIRE(contains(result.shown, "Done: Assign CR00000001: C-01 -> none\n"));
     REQUIRE(contains(result.shown, "CR00000001 is not assigned to anyone.\n"));
     REQUIRE_FALSE(CsvStorage(dir.path()).load()->get(courier::TrackingId(1)).getAssigneeCode());
+}
+
+TEST_CASE("ConsoleApp shows the history, including earlier sessions") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result = runSession(dir.path(), "9\nCR00000001\nPlovdiv\n\n13\n18\n19\n0\n");
+    const std::string& shown = result.shown;
+    const auto history = shown.find("Oldest first:\n");
+    const auto cancelled = shown.find("Every undo made, oldest first:\n");
+    REQUIRE(history != std::string::npos);
+    REQUIRE(cancelled != std::string::npos);
+    const std::string historyPart = shown.substr(history, cancelled - history);
+    REQUIRE(
+        contains(historyPart, "  Accept CR00000001: Standard shipment to Sofia for Ivan Petrov\n"));
+    REQUIRE(contains(historyPart, "  Accept CR00000002: Express shipment to Varna"));
+    REQUIRE(contains(historyPart, "  Reroute CR00000001: Sofia -> Plovdiv\n"));
+    REQUIRE(contains(historyPart, "  Undo: Reroute CR00000001: Sofia -> Plovdiv\n"));
+    REQUIRE(historyPart.find("Accept CR00000002") < historyPart.find("Reroute CR00000001"));
+    const std::string cancelledPart = shown.substr(cancelled);
+    REQUIRE(contains(cancelledPart, "  Undo: Reroute CR00000001: Sofia -> Plovdiv\n"));
+    REQUIRE_FALSE(contains(cancelledPart, "Accept CR"));
+}
+
+TEST_CASE("ConsoleApp shows empty history lists as none") {
+    const TempDir dir;
+    const std::string shown = runSession(dir.path(), "18\n19\n0\n").shown;
+    REQUIRE(contains(shown, "Oldest first:\n  (none)\n"));
+    REQUIRE(contains(shown, "Every undo made, oldest first:\n  (none)\n"));
 }

@@ -92,6 +92,9 @@ std::vector<ConsoleApp::MenuItem> ConsoleApp::buildMenu() {
         {16, "Couriers and offices", "Register an office", [this] { return registerOffice(); }},
         {17, "Couriers and offices", "List couriers and offices with their shipments",
          [this] { return listAssignees(); }},
+        {18, "History", "Logistics history", [this] { return showHistory(); }},
+        {19, "History", "Cancelled (undone) operations",
+         [this] { return showCancelledOperations(); }},
     };
 }
 
@@ -286,6 +289,15 @@ bool ConsoleApp::acceptShipment() {
                          std::move(*recipient), std::move(*destination), *declaredValue);
     out_ << "Shipment accepted.\n" << package;
     return true;
+}
+
+void ConsoleApp::printRecords(const std::vector<OperationRecord>& records) const {
+    if (records.empty()) {
+        out_ << "  (none)\n";
+    }
+    for (const OperationRecord& record : records) {
+        out_ << formatRecord(record, zone_) << '\n';
+    }
 }
 
 bool ConsoleApp::findShipment() {
@@ -579,6 +591,18 @@ bool ConsoleApp::listAssignees() {
         out_ << '\n' << *assignee << '\n';
         printPackages(manager_->assignedTo(assignee->getCode()));
     }
+    return false;
+}
+
+bool ConsoleApp::showHistory() {
+    out_ << "Oldest first:\n";
+    printRecords(manager_->history());
+    return false;
+}
+
+bool ConsoleApp::showCancelledOperations() {
+    out_ << "Every undo made, oldest first:\n";
+    printRecords(manager_->cancelledOperations());
     return false;
 }
 
