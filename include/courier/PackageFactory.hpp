@@ -38,6 +38,14 @@ public:
                                                   Dimensions dimensions, std::string recipient,
                                                   std::string destination);
 
+    // Re-creates a package that was issued earlier, e.g. one read back from a file, with the ID it
+    // already has. The counter moves up to at least that ID, so create() never issues it again.
+    // The caller makes sure no other package has the ID. Invalid input throws ValidationException
+    // and changes nothing.
+    [[nodiscard]] std::unique_ptr<Package> restore(ServiceType type, TrackingId id, double weightKg,
+                                                   Dimensions dimensions, std::string recipient,
+                                                   std::string destination, Money declaredValue);
+
     // Empty until the first package is created.
     [[nodiscard]] std::optional<TrackingId> getLastIssued() const;
 

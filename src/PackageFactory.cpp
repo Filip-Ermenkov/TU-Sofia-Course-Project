@@ -53,6 +53,17 @@ std::unique_ptr<Package> PackageFactory::create(ServiceType type, double weightK
                   Money());
 }
 
+std::unique_ptr<Package> PackageFactory::restore(ServiceType type, TrackingId id, double weightKg,
+                                                 Dimensions dimensions, std::string recipient,
+                                                 std::string destination, Money declaredValue) {
+    auto package = makePackage(type, id, weightKg, dimensions, std::move(recipient),
+                               std::move(destination), declaredValue);
+    if (!lastIssued_ || id.getNumber() > lastIssued_->getNumber()) {
+        lastIssued_ = id;
+    }
+    return package;
+}
+
 std::optional<TrackingId> PackageFactory::getLastIssued() const { return lastIssued_; }
 
 TrackingId PackageFactory::nextId() const {

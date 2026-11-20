@@ -83,6 +83,40 @@ TEST_CASE("PackageFactory reports when no tracking IDs are left") {
     REQUIRE(factory.getLastIssued() == last);
 }
 
+TEST_CASE("PackageFactory restores a package with the ID it already has") {
+    PackageFactory factory;
+    const auto package =
+        factory.restore(ServiceType::Fragile, TrackingId(42), 1.5, Dimensions(30.0, 20.0, 10.0),
+                        "Maria", "Plovdiv", Money(20000));
+    REQUIRE(dynamic_cast<const FragilePackage*>(package.get()) != nullptr);
+    REQUIRE(package->getId() == TrackingId(42));
+    REQUIRE(package->getWeightKg() == 1.5);
+    REQUIRE(package->getDimensions().volume() == 6000.0);
+    REQUIRE(package->getRecipient() == "Maria");
+    REQUIRE(package->getDestination() == "Plovdiv");
+    REQUIRE(package->getDeclaredValue() == Money(20000));
+}
+
+TEST_CASE("PackageFactory continues after the highest restored ID") {
+    PackageFactory factory;
+    static_cast<void>(factory.restore(ServiceType::Standard, TrackingId(7), 1.0, Dimensions(10.0),
+                                      "A", "Sofia", Money()));
+    static_cast<void>(factory.restore(ServiceType::Express, TrackingId(3), 1.0, Dimensions(10.0),
+                                      "B", "Sofia", Money()));
+    REQUIRE(factory.getLastIssued() == TrackingId(7));  // a lower ID does not move it back
+
+    const auto next = factory.create(ServiceType::Standard, 1.0, Dimensions(10.0), "C", "Sofia");
+    REQUIRE(next->getId() == TrackingId(8));
+}
+
+TEST_CASE("PackageFactory changes nothing when a restored package is invalid") {
+    PackageFactory factory(TrackingId(5));
+    REQUIRE_THROWS_AS(factory.restore(ServiceType::Standard, TrackingId(9), 0.0, Dimensions(10.0),
+                                      "A", "Sofia", Money()),
+                      ValidationException);
+    REQUIRE(factory.getLastIssued() == TrackingId(5));
+}
+
 TEST_CASE("PackageFactory cannot be copied or moved, so no ID is handed out twice") {
     STATIC_REQUIRE_FALSE(std::is_copy_constructible_v<PackageFactory>);
     STATIC_REQUIRE_FALSE(std::is_copy_assignable_v<PackageFactory>);
