@@ -51,13 +51,19 @@ TEST_CASE("Dimensions error message names the invalid side") {
     REQUIRE_THROWS_WITH(Dimensions(30.0, -2.0, 10.0), "Invalid width: -2");
 }
 
-TEST_CASE("Dimensions setter rejects an invalid value and keeps the old one") {
+TEST_CASE("Dimensions setters reject an invalid value and keep the old one") {
     Dimensions box(30.0, 20.0, 10.0);
-    REQUIRE_THROWS_AS(box.setHeight(-5.0), ValidationException);
     REQUIRE_THROWS_AS(box.setLength(600.0), ValidationException);
-    REQUIRE(box.getHeight() == 10.0);
+    REQUIRE_THROWS_AS(box.setWidth(0.0), ValidationException);
+    REQUIRE_THROWS_AS(box.setHeight(-5.0), ValidationException);
     REQUIRE(box.getLength() == 30.0);
+    REQUIRE(box.getWidth() == 20.0);
+    REQUIRE(box.getHeight() == 10.0);
 
+    box.setLength(40.0);
+    box.setWidth(25.0);
     box.setHeight(12.5);
+    REQUIRE(box.getLength() == 40.0);
+    REQUIRE(box.getWidth() == 25.0);
     REQUIRE(box.getHeight() == 12.5);
 }
