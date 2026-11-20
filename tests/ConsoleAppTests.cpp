@@ -366,3 +366,55 @@ TEST_CASE("ConsoleApp refuses to change a delivered shipment") {
         contains(result.shown,
                  "Not allowed: Shipment CR00000002 is Delivered and can no longer be changed\n"));
 }
+
+TEST_CASE("ConsoleApp registers couriers and offices and lists them with their shipments") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result =
+        runSession(dir.path(),
+                   "15\nc-01\nPetar Stoyanov\n0888 123 456\n16\nvar-1\nVarna Center\n\n"
+                   "11\nCR00000002\nvar-1\n17\n0\n");
+    REQUIRE(contains(result.shown, "Phone [none]: "));
+    REQUIRE(
+        contains(result.shown, "Registered: Courier C-01: Petar Stoyanov (phone 0888 123 456)\n"));
+    REQUIRE(contains(result.shown, "Registered: Office VAR-1: Varna Center\n"));
+    REQUIRE(contains(result.shown, "Done: Assign CR00000002: none -> VAR-1\n"));
+    REQUIRE(
+        contains(result.shown, "\nCourier C-01: Petar Stoyanov (phone 0888 123 456)\n  (none)\n"));
+    REQUIRE(contains(result.shown, "\nOffice VAR-1: Varna Center\nTracking ID"));
+    REQUIRE(contains(result.shown, "CR00000002  Express   Accepted    VAR-1"));
+
+    const auto saved = CsvStorage(dir.path()).load();
+    REQUIRE(saved->assigneeCount() == 2);
+    REQUIRE(saved->get(courier::TrackingId(2)).getAssigneeCode() == "VAR-1");
+}
+
+TEST_CASE("ConsoleApp rejects a bad or duplicate code") {
+    const TempDir dir;
+    const Result result =
+        runSession(dir.path(), "15\nC 01\nPetar\n\n15\nC-01\nPetar\n\n15\nc-01\nIvan\n\n0\n");
+    REQUIRE(contains(result.shown, "Rejected: Invalid code \"C 01\""));
+    REQUIRE(contains(result.shown, "Rejected: Code C-01 is already in use\n"));
+    REQUIRE(CsvStorage(dir.path()).load()->assigneeCount() == 1);
+}
+
+TEST_CASE("ConsoleApp reports an unknown courier or office") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result = runSession(dir.path(), "11\nCR00000001\nX-9\n0\n");
+    REQUIRE(contains(result.shown, "Not found: No courier or office with code X-9\n"));
+}
+
+TEST_CASE("ConsoleApp unassigns a shipment and skips one that is not assigned") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result =
+        runSession(dir.path(),
+                   "15\nC-01\nPetar\n\n11\nCR00000001\nC-01\n11\nCR00000001\nc-01\n12\nCR00000001\n"
+                   "12\nCR00000001\n0\n");
+    REQUIRE(contains(result.shown, "Assigned to: C-01\n"));
+    REQUIRE(contains(result.shown, "Nothing changed.\n"));
+    REQUIRE(contains(result.shown, "Done: Assign CR00000001: C-01 -> none\n"));
+    REQUIRE(contains(result.shown, "CR00000001 is not assigned to anyone.\n"));
+    REQUIRE_FALSE(CsvStorage(dir.path()).load()->get(courier::TrackingId(1)).getAssigneeCode());
+}

@@ -7,16 +7,20 @@
 #include <format>
 #include <functional>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <utility>
 
+#include "courier/Assignee.hpp"
 #include "courier/AssigneeNotFoundException.hpp"
 #include "courier/ConsoleFormat.hpp"
+#include "courier/Courier.hpp"
 #include "courier/Dimensions.hpp"
 #include "courier/InputParsing.hpp"
 #include "courier/InvalidStatusChangeException.hpp"
 #include "courier/LogisticsException.hpp"
 #include "courier/Money.hpp"
+#include "courier/Office.hpp"
 #include "courier/OperationNotAllowedException.hpp"
 #include "courier/PackageNotFoundException.hpp"
 #include "courier/ParcelDetails.hpp"
@@ -78,8 +82,16 @@ std::vector<ConsoleApp::MenuItem> ConsoleApp::buildMenu() {
         {9, "Changes (can be undone)", "Reroute a shipment", [this] { return rerouteShipment(); }},
         {10, "Changes (can be undone)", "Modify a shipment's weight, size or declared value",
          [this] { return modifyShipment(); }},
+        {11, "Changes (can be undone)", "Assign a shipment to a courier or office",
+         [this] { return assignShipment(); }},
+        {12, "Changes (can be undone)", "Remove a shipment's assignment",
+         [this] { return unassignShipment(); }},
         {13, "Changes (can be undone)", "Undo the last change", [this] { return undo(); }},
         {14, "Changes (can be undone)", "Redo the last undone change", [this] { return redo(); }},
+        {15, "Couriers and offices", "Register a courier", [this] { return registerCourier(); }},
+        {16, "Couriers and offices", "Register an office", [this] { return registerOffice(); }},
+        {17, "Couriers and offices", "List couriers and offices with their shipments",
+         [this] { return listAssignees(); }},
     };
 }
 
@@ -478,6 +490,96 @@ bool ConsoleApp::redo() {
     }
     out_ << "Redone: " << manager_->history().back().getDetails() << '\n';
     return true;
+}
+
+bool ConsoleApp::assignShipment() {
+    const auto id = input_.askTrackingId("Tracking ID");
+    if (!id) {
+        return false;
+    }
+    const Package& package = manager_->get(*id);
+    out_ << std::format("Assigned to: {}\n", package.getAssigneeCode().value_or("-"));
+    const auto code = input_.askCode("Courier or office code");
+    if (!code) {
+        return false;
+    }
+    if (package.getAssigneeCode() == code) {
+        out_ << "Nothing changed.\n";
+        return false;
+    }
+    manager_->assign(*id, *code);
+    out_ << "Done: " << manager_->history().back().getDetails() << '\n';
+    return true;
+}
+
+bool ConsoleApp::unassignShipment() {
+    const auto id = input_.askTrackingId("Tracking ID");
+    if (!id) {
+        return false;
+    }
+    if (!manager_->get(*id).getAssigneeCode()) {
+        out_ << std::format("{} is not assigned to anyone.\n", id->getValue());
+        return false;
+    }
+    manager_->unassign(*id);
+    out_ << "Done: " << manager_->history().back().getDetails() << '\n';
+    return true;
+}
+
+std::optional<ConsoleApp::AssigneeInput> ConsoleApp::askAssignee(std::string_view contactPrompt) {
+    auto code = input_.askCode(
+        std::format("Code (1 to {} characters of A-Z, 0-9 and '-')", Assignee::kMaxCodeLength));
+    if (!code) {
+        return std::nullopt;
+    }
+    auto name = input_.askText("Name");
+    if (!name) {
+        return std::nullopt;
+    }
+    auto contact = input_.askText(contactPrompt, "");
+    if (!contact) {
+        return std::nullopt;
+    }
+    return AssigneeInput{std::move(*code), std::move(*name), std::move(*contact)};
+}
+
+bool ConsoleApp::registerCourier() {
+    auto input = askAssignee("Phone");
+    if (!input) {
+        return false;
+    }
+    // The phone is optional: without one, the two-argument constructor.
+    auto courier = input->contact.empty()
+                       ? std::make_unique<Courier>(std::move(input->code), std::move(input->name))
+                       : std::make_unique<Courier>(std::move(input->code), std::move(input->name),
+                                                   std::move(input->contact));
+    out_ << "Registered: " << manager_->addAssignee(std::move(courier)) << '\n';
+    return true;
+}
+
+bool ConsoleApp::registerOffice() {
+    auto input = askAssignee("Address");
+    if (!input) {
+        return false;
+    }
+    auto office = input->contact.empty()
+                      ? std::make_unique<Office>(std::move(input->code), std::move(input->name))
+                      : std::make_unique<Office>(std::move(input->code), std::move(input->name),
+                                                 std::move(input->contact));
+    out_ << "Registered: " << manager_->addAssignee(std::move(office)) << '\n';
+    return true;
+}
+
+bool ConsoleApp::listAssignees() {
+    const auto assignees = manager_->assignees();
+    if (assignees.empty()) {
+        out_ << "  (none)\n";
+    }
+    for (const Assignee* assignee : assignees) {
+        out_ << '\n' << *assignee << '\n';
+        printPackages(manager_->assignedTo(assignee->getCode()));
+    }
+    return false;
 }
 
 }  // namespace courier

@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -63,6 +64,13 @@ private:
     void printPackages(const std::vector<const Package*>& packages) const;
     [[nodiscard]] std::optional<ServiceType> askServiceType();
     [[nodiscard]] std::optional<PackageStatus> askStatus(std::string_view prompt);
+    // Code and name of a new courier or office, then `contactPrompt` (may be left empty).
+    struct AssigneeInput {
+        std::string code;
+        std::string name;
+        std::string contact;
+    };
+    [[nodiscard]] std::optional<AssigneeInput> askAssignee(std::string_view contactPrompt);
 
     bool acceptShipment();
     bool findShipment();
@@ -76,6 +84,11 @@ private:
     bool modifyShipment();
     bool undo();
     bool redo();
+    bool assignShipment();
+    bool unassignShipment();
+    bool registerCourier();
+    bool registerOffice();
+    bool listAssignees();
 
     std::ostream& out_;
     InputReader input_;
