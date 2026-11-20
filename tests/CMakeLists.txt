@@ -40,7 +40,8 @@ add_executable(courier_tests
     LogisticsManagerTests.cpp
     DispatchModuleTests.cpp
     CsvStorageTests.cpp
-    InputParsingTests.cpp)
+    InputParsingTests.cpp
+    InputReaderTests.cpp)
 
 target_link_libraries(courier_tests PRIVATE courier_console courier_core Catch2::Catch2WithMain project_warnings)
 
