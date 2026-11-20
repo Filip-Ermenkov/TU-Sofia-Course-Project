@@ -42,7 +42,8 @@ add_executable(courier_tests
     CsvStorageTests.cpp
     InputParsingTests.cpp
     InputReaderTests.cpp
-    ConsoleFormatTests.cpp)
+    ConsoleFormatTests.cpp
+    ConsoleAppTests.cpp)
 
 target_link_libraries(courier_tests PRIVATE courier_console courier_core Catch2::Catch2WithMain project_warnings)
 

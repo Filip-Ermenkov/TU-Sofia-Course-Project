@@ -70,7 +70,8 @@ target_link_libraries(courier_core PRIVATE project_warnings)
 add_library(courier_console STATIC
     src/InputParsing.cpp
     src/InputReader.cpp
-    src/ConsoleFormat.cpp)
+    src/ConsoleFormat.cpp
+    src/ConsoleApp.cpp)
 
 target_link_libraries(courier_console PUBLIC courier_core PRIVATE project_warnings)
 
