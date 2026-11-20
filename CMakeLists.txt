@@ -66,9 +66,15 @@ add_library(courier_core STATIC
 target_include_directories(courier_core PUBLIC include)
 target_link_libraries(courier_core PRIVATE project_warnings)
 
+# The console user interface, kept apart from the logic so the core does not depend on it.
+add_library(courier_console STATIC
+    src/InputParsing.cpp)
+
+target_link_libraries(courier_console PUBLIC courier_core PRIVATE project_warnings)
+
 add_executable(courier src/main.cpp)
 
-target_link_libraries(courier PRIVATE courier_core project_warnings)
+target_link_libraries(courier PRIVATE courier_console project_warnings)
 
 enable_testing()
 add_subdirectory(tests)
