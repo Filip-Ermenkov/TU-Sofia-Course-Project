@@ -61,6 +61,10 @@ std::vector<ConsoleApp::MenuItem> ConsoleApp::buildMenu() {
         {3, "Shipments", "List all shipments", [this] { return listShipments(); }},
         {4, "Shipments", "Report: undelivered shipments", [this] { return reportUndelivered(); }},
         {5, "Shipments", "Filter shipments", [this] { return filterShipments(); }},
+        {6, "Delivery", "Dispatch the next waiting shipment", [this] { return dispatchNext(); }},
+        {7, "Delivery", "Change the status of a shipment", [this] { return changeStatus(); }},
+        {8, "Delivery", "Show the dispatch alerts of this session",
+         [this] { return showDispatchAlerts(); }},
     };
 }
 
@@ -329,6 +333,43 @@ bool ConsoleApp::filterShipments() {
     }
     if (predicate) {
         printPackages(manager_->filter(predicate));
+    }
+    return false;
+}
+
+bool ConsoleApp::dispatchNext() {
+    // Express shipments go first, then the others in the order they arrived.
+    const auto id = manager_->dispatchNext();
+    if (!id) {
+        out_ << "No shipment is waiting.\n";
+        return false;
+    }
+    out_ << std::format("{} is now in transit.\n", id->getValue());
+    return true;
+}
+
+bool ConsoleApp::changeStatus() {
+    const auto id = input_.askTrackingId("Tracking ID");
+    if (!id) {
+        return false;
+    }
+    out_ << std::format("Current status: {}\n", toString(manager_->get(*id).getStatus()));
+    const auto status = askStatus("New status");
+    if (!status) {
+        return false;
+    }
+    manager_->changeStatus(*id, *status);
+    out_ << std::format("{} is now {}.\n", id->getValue(), toString(*status));
+    return true;
+}
+
+bool ConsoleApp::showDispatchAlerts() {
+    // The dispatch module hears about every status change but keeps only express and fragile ones.
+    if (dispatch_.alerts().empty()) {
+        out_ << "  (none)\n";
+    }
+    for (const std::string& alert : dispatch_.alerts()) {
+        out_ << "  " << alert << '\n';
     }
     return false;
 }

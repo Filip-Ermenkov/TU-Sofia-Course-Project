@@ -12,6 +12,7 @@
 #include "courier/CsvStorage.hpp"
 #include "courier/Dimensions.hpp"
 #include "courier/LogisticsManager.hpp"
+#include "courier/PackageStatus.hpp"
 #include "courier/ServiceType.hpp"
 #include "courier/TrackingId.hpp"
 
@@ -257,4 +258,45 @@ TEST_CASE("ConsoleApp asks before exiting with unsaved changes") {
     REQUIRE(contains(result.shown, "Exit anyway and lose the unsaved changes? (y/N): "));
     REQUIRE(result.exitCode == EXIT_FAILURE);
     REQUIRE(result.shown.ends_with("Goodbye.\n"));
+}
+
+TEST_CASE("ConsoleApp dispatches express shipments first") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result = runSession(dir.path(), "6\n6\n6\n0\n");
+    const std::string& shown = result.shown;
+    REQUIRE(shown.find("CR00000002 is now in transit.") <
+            shown.find("CR00000001 is now in transit."));
+    REQUIRE(contains(shown, "No shipment is waiting.\n"));
+    // The dispatch module is attached and reports the express shipment only.
+    REQUIRE(contains(shown, "[dispatch] CR00000002 (Express): Accepted -> In transit\n"));
+    REQUIRE_FALSE(contains(shown, "[dispatch] CR00000001"));
+    REQUIRE(CsvStorage(dir.path()).load()->waitingCount() == 0);
+}
+
+TEST_CASE("ConsoleApp changes a status one step forward") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result = runSession(dir.path(), "7\nCR00000002\n2\n7\nCR00000002\n3\n8\n0\n");
+    REQUIRE(contains(result.shown, "Current status: Accepted\n"));
+    REQUIRE(contains(result.shown, "CR00000002 is now Delivered.\n"));
+    REQUIRE(contains(result.shown, "  CR00000002 (Express): In transit -> Delivered\n"));
+    REQUIRE(CsvStorage(dir.path()).load()->get(courier::TrackingId(2)).getStatus() ==
+            courier::PackageStatus::Delivered);
+}
+
+TEST_CASE("ConsoleApp refuses a status step that is not allowed") {
+    const TempDir dir;
+    saveTwoShipments(dir.path());
+    const Result result = runSession(dir.path(), "7\nCR00000001\n3\n0\n");
+    REQUIRE(contains(result.shown,
+                     "Not allowed: Cannot change CR00000001 from Accepted to "
+                     "Delivered\n"));
+    REQUIRE(CsvStorage(dir.path()).load()->get(courier::TrackingId(1)).getStatus() ==
+            courier::PackageStatus::Accepted);
+}
+
+TEST_CASE("ConsoleApp shows no dispatch alerts before any status change") {
+    const TempDir dir;
+    REQUIRE(contains(runSession(dir.path(), "8\n0\n").shown, "  (none)\n"));
 }

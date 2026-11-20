@@ -69,6 +69,9 @@ private:
     bool listShipments();
     bool reportUndelivered();
     bool filterShipments();
+    bool dispatchNext();
+    bool changeStatus();
+    bool showDispatchAlerts();
 
     std::ostream& out_;
     InputReader input_;
