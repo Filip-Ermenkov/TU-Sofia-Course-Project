@@ -234,6 +234,49 @@ std::vector<OperationRecord> LogisticsManager::cancelledOperations() const {
     return cancelled;
 }
 
+const Package& LogisticsManager::restore(ServiceType type, TrackingId id,
+                                         const ParcelDetails& parcel, std::string recipient,
+                                         std::string destination, PackageStatus status,
+                                         std::optional<std::string> assigneeCode) {
+    // Every check that can fail comes before the factory moves its counter.
+    if (packages_.contains(id)) {
+        throw ValidationException(std::format("Tracking ID {} is already in use", id.getValue()));
+    }
+    if (assigneeCode) {
+        static_cast<void>(getAssignee(*assigneeCode));  // throws for an unknown code
+    }
+    auto package =
+        factory_.restore(type, id, parcel.getWeightKg(), parcel.getDimensions(),
+                         std::move(recipient), std::move(destination), parcel.getDeclaredValue());
+    // The same forward steps as in real life, so no status is reached that setStatus forbids.
+    if (status != PackageStatus::Accepted) {
+        package->setStatus(PackageStatus::InTransit);
+    }
+    if (status == PackageStatus::Delivered) {
+        package->setStatus(PackageStatus::Delivered);
+    }
+    package->setAssigneeCode(std::move(assigneeCode));
+
+    const auto it = packages_.emplace(id, std::move(package)).first;
+    const Package& restored = *it->second;
+    if (status == PackageStatus::Accepted) {
+        try {
+            queueFor(restored).push(id);
+        } catch (...) {
+            packages_.erase(it);  // out of memory: register nothing, like accept()
+            throw;
+        }
+    }
+    return restored;
+}
+
+void LogisticsManager::restoreRecord(OperationRecord record) {
+    if (!contains(record.getId())) {
+        throw PackageNotFoundException(record.getId());
+    }
+    history_.push_back(std::move(record));
+}
+
 // Same lookup as get(), but gives write access. Private and non-const, so only the manager's own
 // changing functions can modify a shipment.
 Package& LogisticsManager::findPackage(const TrackingId& id) {

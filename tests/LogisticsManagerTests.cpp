@@ -1,9 +1,11 @@
 #include <algorithm>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -16,6 +18,7 @@
 #include "courier/LogisticsManager.hpp"
 #include "courier/Office.hpp"
 #include "courier/OperationNotAllowedException.hpp"
+#include "courier/OperationRecord.hpp"
 #include "courier/OperationType.hpp"
 #include "courier/PackageNotFoundException.hpp"
 #include "courier/ParcelDetails.hpp"
@@ -643,4 +646,117 @@ TEST_CASE("LogisticsManager does not notify observers about assignments") {
     manager.assign(package.getId(), "C-01");
     REQUIRE(manager.undo());
     REQUIRE(observer.notifications().empty());
+}
+
+TEST_CASE("LogisticsManager restores a saved shipment without recording or notifying") {
+    RecordingObserver observer;
+    LogisticsManager manager;
+    manager.attach(observer);
+    addCourierAndOffice(manager);
+    const auto& package = manager.restore(ServiceType::Fragile, TrackingId(12),
+                                          ParcelDetails(1.5, kBox, Money(20000)), "Maria", "Varna",
+                                          PackageStatus::InTransit, "VAR-1");
+
+    REQUIRE(manager.get(TrackingId(12)).getRecipient() == "Maria");
+    REQUIRE(package.serviceType() == ServiceType::Fragile);
+    REQUIRE(package.getWeightKg() == 1.5);
+    REQUIRE(package.getDeclaredValue() == Money(20000));
+    REQUIRE(package.getDestination() == "Varna");
+    REQUIRE(package.getStatus() == PackageStatus::InTransit);
+    REQUIRE(package.getAssigneeCode() == "VAR-1");
+    REQUIRE(manager.history().empty());
+    REQUIRE(observer.notifications().empty());
+    REQUIRE_FALSE(manager.canUndo());
+
+    manager.changeStatus(package.getId(), PackageStatus::Delivered);  // continues normally
+    REQUIRE(observer.notifications().size() == 1);
+}
+
+TEST_CASE("LogisticsManager numbers new shipments after the highest restored ID") {
+    LogisticsManager manager;
+    manager.restore(ServiceType::Standard, TrackingId(9), ParcelDetails(1.0, kBox), "A", "Sofia",
+                    PackageStatus::Delivered, std::nullopt);
+    manager.restore(ServiceType::Standard, TrackingId(4), ParcelDetails(1.0, kBox), "B", "Sofia",
+                    PackageStatus::Accepted, std::nullopt);
+    const auto& next = manager.accept(ServiceType::Standard, 1.0, kBox, "C", "Sofia");
+    REQUIRE(next.getId() == TrackingId(10));
+}
+
+TEST_CASE("LogisticsManager queues restored shipments that are still waiting") {
+    LogisticsManager manager;
+    const ParcelDetails parcel(1.0, kBox);
+    manager.restore(ServiceType::Standard, TrackingId(1), parcel, "A", "Sofia",
+                    PackageStatus::Accepted, std::nullopt);
+    manager.restore(ServiceType::Express, TrackingId(2), parcel, "B", "Sofia",
+                    PackageStatus::InTransit, std::nullopt);
+    manager.restore(ServiceType::Standard, TrackingId(3), parcel, "C", "Sofia",
+                    PackageStatus::Accepted, std::nullopt);
+    manager.restore(ServiceType::Express, TrackingId(4), parcel, "D", "Sofia",
+                    PackageStatus::Accepted, std::nullopt);
+    REQUIRE(manager.waitingCount() == 3);
+
+    REQUIRE(manager.dispatchNext() == TrackingId(4));  // express first
+    REQUIRE(manager.dispatchNext() == TrackingId(1));
+    REQUIRE(manager.dispatchNext() == TrackingId(3));
+    REQUIRE_FALSE(manager.dispatchNext().has_value());
+}
+
+TEST_CASE("LogisticsManager keeps a restored delivered shipment final") {
+    LogisticsManager manager;
+    const auto& package =
+        manager.restore(ServiceType::Express, TrackingId(5), ParcelDetails(2.0, kBox), "A", "Sofia",
+                        PackageStatus::Delivered, std::nullopt);
+    REQUIRE(package.getStatus() == PackageStatus::Delivered);
+    REQUIRE(manager.waitingCount() == 0);
+    REQUIRE_THROWS_AS(manager.reroute(package.getId(), "Varna"), OperationNotAllowedException);
+    REQUIRE_THROWS_AS(manager.changeStatus(package.getId(), PackageStatus::InTransit),
+                      InvalidStatusChangeException);
+}
+
+TEST_CASE("LogisticsManager rejects a bad restored shipment and registers nothing") {
+    LogisticsManager manager;
+    addCourierAndOffice(manager);
+    manager.restore(ServiceType::Standard, TrackingId(3), ParcelDetails(1.0, kBox), "A", "Sofia",
+                    PackageStatus::Accepted, std::nullopt);
+
+    REQUIRE_THROWS_AS(manager.restore(ServiceType::Express, TrackingId(3), ParcelDetails(1.0, kBox),
+                                      "B", "Sofia", PackageStatus::Accepted, std::nullopt),
+                      ValidationException);
+    REQUIRE_THROWS_AS(
+        manager.restore(ServiceType::Standard, TrackingId(8), ParcelDetails(1.0, kBox), "B",
+                        "Sofia", PackageStatus::Accepted, "C-99"),
+        AssigneeNotFoundException);
+    REQUIRE_THROWS_AS(
+        manager.restore(ServiceType::Standard, TrackingId(9), ParcelDetails(1.0, kBox), " ",
+                        "Sofia", PackageStatus::Accepted, std::nullopt),
+        ValidationException);
+
+    REQUIRE(manager.packageCount() == 1);
+    REQUIRE(manager.get(TrackingId(3)).serviceType() == ServiceType::Standard);
+    REQUIRE(manager.waitingCount() == 1);
+    // The failed attempts did not move the numbering past 3.
+    REQUIRE(manager.accept(ServiceType::Standard, 1.0, kBox, "C", "Sofia").getId() ==
+            TrackingId(4));
+}
+
+TEST_CASE("LogisticsManager restores saved history records as they were") {
+    LogisticsManager manager;
+    manager.restore(ServiceType::Standard, TrackingId(1), ParcelDetails(1.0, kBox), "A", "Sofia",
+                    PackageStatus::Accepted, std::nullopt);
+    const std::chrono::sys_seconds time{std::chrono::seconds{1'700'000'000}};
+    manager.restoreRecord(courier::OperationRecord(OperationType::Accept, TrackingId(1),
+                                                   "Standard shipment to Sofia for A", time));
+    manager.restoreRecord(courier::OperationRecord(OperationType::Undo, TrackingId(1),
+                                                   "Reroute CR00000001: Varna -> Sofia", time));
+
+    REQUIRE(manager.history().size() == 2);
+    REQUIRE(manager.history()[0].getType() == OperationType::Accept);
+    REQUIRE(manager.history()[0].getTime() == time);
+    REQUIRE(manager.cancelledOperations().size() == 1);
+    REQUIRE_FALSE(manager.canUndo());  // undo stacks are not saved
+
+    REQUIRE_THROWS_AS(manager.restoreRecord(courier::OperationRecord(
+                          OperationType::Accept, TrackingId(2), "Standard shipment", time)),
+                      PackageNotFoundException);
+    REQUIRE(manager.history().size() == 2);
 }

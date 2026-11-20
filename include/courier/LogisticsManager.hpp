@@ -123,6 +123,20 @@ public:
     // not remove them.
     [[nodiscard]] std::vector<OperationRecord> cancelledOperations() const;
 
+    // Loading saved data. Both rebuild what was saved without adding history records and without
+    // notifying observers: nothing happens to the shipments, they are only read back.
+    // Registers a shipment accepted earlier, with its saved ID, status and assignment; numbering
+    // continues after the highest ID. The status is reached through the allowed steps, and a
+    // shipment still Accepted joins the delivery queue again. Throws ValidationException for an
+    // ID already in use or an invalid value, AssigneeNotFoundException for an unknown code; then
+    // registers nothing.
+    const Package& restore(ServiceType type, TrackingId id, const ParcelDetails& parcel,
+                           std::string recipient, std::string destination, PackageStatus status,
+                           std::optional<std::string> assigneeCode);
+    // Appends a record read back from a saved history. Throws PackageNotFoundException if its
+    // shipment is not registered.
+    void restoreRecord(OperationRecord record);
+
 private:
     [[nodiscard]] Package& findPackage(const TrackingId& id);
     [[nodiscard]] std::queue<TrackingId>& queueFor(const Package& package);
