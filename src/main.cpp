@@ -7,6 +7,7 @@
 
 #include "courier/Assignee.hpp"
 #include "courier/Courier.hpp"
+#include "courier/CsvStorage.hpp"
 #include "courier/DispatchModule.hpp"
 #include "courier/LogisticsException.hpp"
 #include "courier/LogisticsManager.hpp"
@@ -130,6 +131,19 @@ int main() {
         for (const courier::OperationRecord& record : manager.cancelledOperations()) {
             printRecord(record);
         }
+
+        // Everything is kept in CSV files, so a later run can continue where this one stopped.
+        const courier::CsvStorage storage;
+        storage.save(manager);
+        const auto reloaded = storage.load();
+        std::cout << std::format(
+            "\nSaved to {} and loaded back: {} shipments, {} couriers and offices, {} history "
+            "entries\n",
+            storage.getDirectory().string(), reloaded->packageCount(), reloaded->assigneeCount(),
+            reloaded->history().size());
+        const auto& next = reloaded->accept(ServiceType::Standard, 1.0, box, "Stoyan Iliev",
+                                            "Sofia, 7 Rakovski St");
+        std::cout << "Next tracking ID after loading: " << next.getId().getValue() << '\n';
     } catch (const courier::LogisticsException& error) {
         std::cerr << "Error: " << error.what() << '\n';
         return EXIT_FAILURE;
