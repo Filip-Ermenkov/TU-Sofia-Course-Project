@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
 
 #include "courier/LogisticsManager.hpp"
 
@@ -26,6 +27,14 @@ public:
     // temporary name and only then put in place of the old one, so a failed write leaves the
     // saved data as it was. Throws StorageException on failure.
     void save(const LogisticsManager& manager) const;
+
+    // Reads everything back into a new manager: couriers and offices first, then the shipments
+    // (whose courier or office must exist), then the history (whose shipments must exist).
+    // Numbering continues after the highest saved tracking ID. Loading adds no history records
+    // and, as the manager is new, notifies no observer. If none of the files exists yet, the
+    // manager is empty. Throws StorageException, naming the file and line where possible, if only
+    // some of the files exist or anything in them is wrong; nothing the caller has is changed.
+    [[nodiscard]] std::unique_ptr<LogisticsManager> load() const;
 
 private:
     std::filesystem::path directory_;
